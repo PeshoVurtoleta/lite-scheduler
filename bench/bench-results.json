@@ -1,0 +1,96 @@
+{
+  "gc": true,
+  "timestamp": "2026-05-17T04:26:29.579Z",
+  "results": {
+    "throughput10k": [
+      {
+        "label": "lite-scheduler",
+        "ms": 3.6380100000000084,
+        "heap": -2958592,
+        "opsPerSec": 2748755.50094694
+      },
+      {
+        "label": "setTimeout(0)",
+        "ms": 14.95132799999999,
+        "heap": 2112,
+        "opsPerSec": 668836.9086679128
+      },
+      {
+        "label": "setTimeout + heap PQ",
+        "ms": 6.551701000000037,
+        "heap": 58312,
+        "opsPerSec": 1526321.1797974212
+      },
+      {
+        "label": "queueMicrotask",
+        "ms": 3.930921000000012,
+        "heap": -18392,
+        "opsPerSec": 2543933.0884543266
+      },
+      {
+        "label": "raw MessageChannel",
+        "ms": 4.764496000000008,
+        "heap": -624,
+        "opsPerSec": 2098857.885493026
+      },
+      {
+        "label": "react-style (heap + MC + budget)",
+        "ms": 6.770399999999995,
+        "heap": -32664,
+        "opsPerSec": 1477017.6060498653
+      }
+    ],
+    "priorityIsolation": [
+      {
+        "label": "lite-scheduler",
+        "ms": 0.3489140000001498
+      },
+      {
+        "label": "setTimeout(0)",
+        "ms": 12.153592000000117
+      },
+      {
+        "label": "setTimeout + heap PQ",
+        "ms": 1.5001910000000862
+      },
+      {
+        "label": "queueMicrotask",
+        "ms": 10.620613999999478
+      },
+      {
+        "label": "raw MessageChannel",
+        "ms": 10.628490000000056
+      },
+      {
+        "label": "react-style (heap + MC + budget)",
+        "ms": 0.3504670000002079
+      }
+    ],
+    "gc": [
+      {
+        "label": "lite-scheduler",
+        "heap": -168
+      },
+      {
+        "label": "setTimeout(0)",
+        "heap": 1400
+      },
+      {
+        "label": "setTimeout + heap PQ",
+        "heap": 120
+      },
+      {
+        "label": "queueMicrotask",
+        "heap": -427136
+      },
+      {
+        "label": "raw MessageChannel",
+        "heap": 17112
+      },
+      {
+        "label": "react-style (heap + MC + budget)",
+        "heap": -4384
+      }
+    ]
+  }
+}

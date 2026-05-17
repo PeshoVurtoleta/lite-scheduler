@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>lite-arena × lite-scheduler — Performance under load</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
+          rel="stylesheet">
+    <style>
+        :root {
+            --bg: #08090b;
+            --bg-2: #0c0e12;
+            --surface: #11141a;
+            --surface-2: #161a21;
+            --border: #1f242d;
+            --border-2: #2a313c;
+            --dim: #4d5664;
+            --text: #c2c5cc;
+            --text-2: #e8e9ec;
+            --accent: #d4a574; /* warm amber */
+            --accent-2: #c19560;
+            --bad: #e8716a;
+            --good: #7fa97f;
+            --muted: #4a8c8a;
+            --display: "Instrument Serif", "Cormorant Garamond", Georgia, serif;
+            --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            min-height: 100%;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        body {
+            font-family: var(--mono);
+            font-size: 12px;
+            line-height: 1.5;
+            font-weight: 400;
+            overflow-x: hidden;
+        }
+
+        /* Grain overlay for texture */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+            background-size: 3px 3px;
+            pointer-events: none;
+            z-index: 100;
+            mix-blend-mode: screen;
+        }
+
+        /* Layout */
+        .wrap {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px 28px 80px;
+        }
+
+        /* ───── Header ───── */
+        header {
+            margin-bottom: 28px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 22px;
+        }
+
+        .eyebrow {
+            font-size: 10px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .eyebrow::before {
+            content: '';
+            width: 22px;
+            height: 1px;
+            background: var(--accent);
+        }
+
+        h1 {
+            font-family: var(--display);
+            font-weight: 400;
+            font-size: 52px;
+            line-height: 1.05;
+            letter-spacing: -0.5px;
+            color: var(--text-2);
+            margin-bottom: 8px;
+        }
+
+        h1 .x {
+            font-style: italic;
+            color: var(--accent);
+            margin: 0 8px;
+            font-weight: 300;
+        }
+
+        .tagline {
+            font-family: var(--display);
+            font-style: italic;
+            font-size: 22px;
+            line-height: 1.4;
+            color: var(--text);
+            max-width: 660px;
+            margin-top: 16px;
+        }
+
+        /* ───── Mode selector ───── */
+        .mode-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 1px;
+            margin: 28px 0 24px;
+            background: var(--border);
+        }
+
+        .mode {
+            background: var(--surface);
+            padding: 16px 18px;
+            cursor: pointer;
+            transition: background 100ms ease, color 100ms ease;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .mode:first-child {
+            border-left: 1px solid var(--border);
+        }
+
+        .mode:last-child {
+            border-right: 1px solid var(--border);
+        }
+
+        .mode:hover {
+            background: var(--surface-2);
+        }
+
+        .mode.active {
+            background: var(--bg-2);
+            color: var(--accent);
+            border-top-color: var(--accent);
+        }
+
+        .mode .label {
+            font-size: 10px;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin-bottom: 8px;
+        }
+
+        .mode.active .label {
+            color: var(--accent);
+        }
+
+        .mode .name {
+            font-family: var(--display);
+            font-size: 24px;
+            line-height: 1.1;
+            color: var(--text-2);
+            margin-bottom: 6px;
+        }
+
+        .mode .libs {
+            font-size: 11px;
+            color: var(--dim);
+        }
+
+        .mode .libs .on {
+            color: var(--good);
+        }
+
+        .mode .libs .off {
+            color: var(--bad);
+        }
+
+        /* ───── Main grid ───── */
+        .stage {
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 1px;
+            background: var(--border);
+            margin-bottom: 28px;
+        }
+
+        .canvas-wrap {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-right: none;
+            position: relative;
+            aspect-ratio: 16 / 10;
+            overflow: hidden;
+        }
+
+        canvas.stage-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+        }
+
+        .canvas-overlay {
+            position: absolute;
+            top: 14px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--dim);
+        }
+
+        .canvas-overlay .badge {
+            background: rgba(8, 9, 11, 0.7);
+            backdrop-filter: blur(4px);
+            border: 1px solid var(--border-2);
+            padding: 5px 10px;
+        }
+
+        .canvas-overlay .badge.live {
+            color: var(--accent);
+        }
+
+        .canvas-overlay .badge.live::before {
+            content: '● ';
+            color: var(--accent);
+        }
+
+        .canvas-instructions {
+            position: absolute;
+            bottom: 16px;
+            left: 18px;
+            font-size: 11px;
+            color: var(--dim);
+            letter-spacing: 0.5px;
+            pointer-events: none;
+        }
+
+        /* ───── Stats sidebar ───── */
+        .sidebar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: none;
+            padding: 20px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .stat-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .stat-group h3 {
+            font-size: 10px;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            font-weight: 500;
+            color: var(--dim);
+            margin-bottom: 4px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 11px;
+            padding: 2px 0;
+        }
+
+        .stat-row .k {
+            color: var(--dim);
+        }
+
+        .stat-row .v {
+            font-variant-numeric: tabular-nums;
+            color: var(--text-2);
+            font-weight: 500;
+        }
+
+        .stat-row .v.huge {
+            font-family: var(--display);
+            font-size: 26px;
+            line-height: 1;
+            color: var(--accent);
+            font-weight: 400;
+        }
+
+        .stat-row .v.good {
+            color: var(--good);
+        }
+
+        .stat-row .v.bad {
+            color: var(--bad);
+        }
+
+        .stat-row .unit {
+            color: var(--dim);
+            margin-left: 4px;
+            font-weight: 400;
+        }
+
+        .sparkline {
+            height: 56px;
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            position: relative;
+        }
+
+        .sparkline canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .sparkline-label {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--dim);
+            pointer-events: none;
+        }
+
+        /* ───── Tap test button ───── */
+        .tap-button {
+            margin-top: 4px;
+            background: transparent;
+            color: var(--text-2);
+            border: 1px solid var(--border-2);
+            padding: 14px 16px;
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: border-color 100ms ease, color 100ms ease, background 100ms ease;
+            width: 100%;
+        }
+
+        .tap-button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .tap-button:active {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+            transition: none;
+        }
+
+        /* ───── Footer notes ───── */
+        .notes {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 24px;
+            margin-top: 36px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .note .num {
+            font-family: var(--display);
+            font-size: 32px;
+            color: var(--accent);
+            font-style: italic;
+            font-weight: 400;
+            line-height: 1;
+            margin-bottom: 10px;
+        }
+
+        .note .title {
+            font-family: var(--display);
+            font-size: 18px;
+            color: var(--text-2);
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        .note .body {
+            font-size: 12px;
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .note .body code {
+            color: var(--accent);
+            font-family: var(--mono);
+            font-size: 11px;
+        }
+
+        /* ───── Brand / sig footer ───── */
+        .sig {
+            margin-top: 48px;
+            padding-top: 22px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 10px;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: var(--dim);
+        }
+
+        .sig a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .sig a:hover {
+            color: var(--accent-2);
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <div class="eyebrow">@zakkster · zero-gc · production-grade</div>
+        <h1>lite-arena <span class="x">×</span> lite-scheduler</h1>
+        <p class="tagline">
+            Eight thousand particles. One gravity well. Four scheduling configurations &mdash; flip any one off, and
+            watch what the GC does to your frame budget.
+        </p>
+    </header>
+
+    <!-- Mode selector -->
+    <div class="mode-bar" id="modes">
+        <div class="mode active" data-arena="1" data-sched="1">
+            <div class="label">Mode A · Recommended</div>
+            <div class="name">Both Libraries</div>
+            <div class="libs"><span class="on">▮ arena</span> &nbsp; <span class="on">▮ scheduler</span></div>
+        </div>
+        <div class="mode" data-arena="1" data-sched="0">
+            <div class="label">Mode B</div>
+            <div class="name">Arena Only</div>
+            <div class="libs"><span class="on">▮ arena</span> &nbsp; <span class="off">▮ setTimeout</span></div>
+        </div>
+        <div class="mode" data-arena="0" data-sched="1">
+            <div class="label">Mode C</div>
+            <div class="name">Scheduler Only</div>
+            <div class="libs"><span class="off">▮ Array&lt;Object&gt;</span> &nbsp; <span class="on">▮ scheduler</span>
+            </div>
+        </div>
+        <div class="mode" data-arena="0" data-sched="0">
+            <div class="label">Mode D · Naive</div>
+            <div class="name">Neither</div>
+            <div class="libs"><span class="off">▮ Array&lt;Object&gt;</span> &nbsp; <span
+                    class="off">▮ setTimeout</span></div>
+        </div>
+    </div>
+
+    <!-- Stage -->
+    <div class="stage">
+        <div class="canvas-wrap">
+            <canvas class="stage-canvas" id="cv"></canvas>
+            <div class="canvas-overlay">
+                <div class="badge live" id="ov-mode">Mode A · Both Libraries</div>
+                <div class="badge" id="ov-particles">0 particles</div>
+            </div>
+            <div class="canvas-instructions">drag to move gravity well · scroll to change strength</div>
+        </div>
+
+        <aside class="sidebar">
+            <div class="stat-group">
+                <h3>Frame budget</h3>
+                <div class="stat-row"><span class="k">FPS</span><span class="v huge" id="s-fps">—</span></div>
+                <div class="stat-row"><span class="k">Sim cost</span><span class="v" id="s-frame">— <span class="unit">ms</span></span>
+                </div>
+                <div class="stat-row"><span class="k">JS heap</span><span class="v" id="s-heap">— <span
+                        class="unit">MB</span></span></div>
+                <div class="sparkline">
+                    <span class="sparkline-label">Frame-time history (60 frames)</span>
+                    <canvas id="spark-frame"></canvas>
+                </div>
+            </div>
+
+            <div class="stat-group">
+                <h3>Input latency</h3>
+                <div class="stat-row"><span class="k">Last tap</span><span class="v huge" id="s-tap">—</span></div>
+                <div class="stat-row"><span class="k">Avg (last 10)</span><span class="v" id="s-tap-avg">— <span
+                        class="unit">ms</span></span></div>
+                <div class="sparkline">
+                    <span class="sparkline-label">Tap latency (last 30 taps)</span>
+                    <canvas id="spark-tap"></canvas>
+                </div>
+                <button class="tap-button" id="tap">Tap test &nbsp;·&nbsp; measure input latency</button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Footer notes -->
+    <div class="notes">
+        <div class="note">
+            <div class="num">i.</div>
+            <div class="title">What Mode A buys you</div>
+            <div class="body">
+                Steady 60 fps with a flat heap. <code>Arena</code> packs particles into <code>Float32Array</code>s so
+                the physics inner loop is monomorphic. <code>Scheduler</code> drives systems via
+                <code>MessageChannel</code> at <code>Priority.Normal</code>; the tap handler runs at
+                <code>UserInput</code>.
+            </div>
+        </div>
+        <div class="note">
+            <div class="num">ii.</div>
+            <div class="title">When Arena goes off</div>
+            <div class="body">
+                Particles become <code>Array&lt;{x,y,vx,vy}&gt;</code>. Property reads are polymorphic;
+                <code>.splice</code> is O(n). Frame cost climbs and the heap line walks upward as dead-particle objects
+                pile up between GCs.
+            </div>
+        </div>
+        <div class="note">
+            <div class="num">iii.</div>
+            <div class="title">When Scheduler goes off</div>
+            <div class="body">
+                Systems run via <code>setTimeout(0)</code>. The browser clamps it to ~1&nbsp;ms minimum; <em>tap latency
+                jumps</em>. Click the tap test under load and watch the sparkline climb past 16&nbsp;ms — a dropped
+                frame just for the input handler.
+            </div>
+        </div>
+    </div>
+
+    <div class="sig">
+        <span>Zahary Shinikchiev · <a href="https://www.npmjs.com/~zakkster" target="_blank">@zakkster on npm</a></span>
+        <span>Plovdiv, Bulgaria · MIT licensed</span>
+    </div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "@zakkster/lite-arena": "https://cdn.jsdelivr.net/npm/@zakkster/lite-arena",
+        "@zakkster/lite-scheduler": "https://cdn.jsdelivr.net/npm/@zakkster/lite-scheduler",
+    }
+}
+
+</script>
+
+<script type="module">
+    import {Arena} from '@zakkster/lite-arena';
+    import {createScheduler, Priority} from 'zakkster/lite-scheduler';
+
+    // ─────────────────────────────────────────────────────────────────
+    // Simulation config
+    // ─────────────────────────────────────────────────────────────────
+
+    const MAX = 8_000;
+    const SPAWN_PER_FRAME = 80;
+    const LIFETIME = 5.0;
+
+    const cv = document.getElementById('cv');
+    const ctx = cv.getContext('2d', {alpha: false});
+
+    function resize() {
+        const rect = cv.getBoundingClientRect();
+        cv.width = rect.width * devicePixelRatio;
+        cv.height = rect.height * devicePixelRatio;
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
+
+    resize();
+    addEventListener('resize', resize);
+
+    let gravityX, gravityY, gravityStr = 12000;
+    {
+        const r = cv.getBoundingClientRect();
+        gravityX = r.width / 2;
+        gravityY = r.height / 2;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Two backends for entity state: Arena, and naive Array<Object>.
+    // Both expose: spawn(x,y,vx,vy), tick(dt, gx, gy, gstr), draw(ctx), count.
+    // ─────────────────────────────────────────────────────────────────
+
+    function makeArenaBackend() {
+        const arena = new Arena(MAX);
+        const Pos = arena.registerComponent({x: Float32Array, y: Float32Array});
+        const Vel = arena.registerComponent({vx: Float32Array, vy: Float32Array});
+        const Life = arena.registerComponent({t: Float32Array});
+
+        return {
+            name: 'arena',
+            spawn(x, y, vx, vy) {
+                try {
+                    const e = arena.spawn();
+                    Pos.add(e);
+                    Vel.add(e);
+                    Life.add(e);
+                    const pi = Pos.idx(e), vi = Vel.idx(e), li = Life.idx(e);
+                    Pos.data.x[pi] = x;
+                    Pos.data.y[pi] = y;
+                    Vel.data.vx[vi] = vx;
+                    Vel.data.vy[vi] = vy;
+                    Life.data.t[li] = 0;
+                } catch {
+                }
+            },
+            tick(dt, gx, gy, gstr) {
+                const n = Pos.count;
+                const px = Pos.data.x, py = Pos.data.y;
+                const vx = Vel.data.vx, vy = Vel.data.vy;
+                const lt = Life.data.t;
+                for (let i = 0; i < n; i++) {
+                    const dx = gx - px[i], dy = gy - py[i];
+                    const d2 = dx * dx + dy * dy + 100;
+                    const f = gstr / d2;
+                    vx[i] += dx * f * dt;
+                    vy[i] += dy * f * dt;
+                    vx[i] *= 0.99;
+                    vy[i] *= 0.99;
+                    px[i] += vx[i] * dt;
+                    py[i] += vy[i] * dt;
+                    lt[i] += dt;
+                }
+                // Despawn aged-out particles. Walk dense backward so swap-and-pop
+                // never moves an unprocessed entity into the gap.
+                for (let i = n - 1; i >= 0; i--) {
+                    if (lt[i] > LIFETIME) arena.despawn(Pos.dense[i]);
+                }
+            },
+            draw(ctx) {
+                const n = Pos.count;
+                const px = Pos.data.x, py = Pos.data.y;
+                const lt = Life.data.t;
+                for (let i = 0; i < n; i++) {
+                    const a = 1 - lt[i] / LIFETIME;
+                    if (a <= 0) continue;
+                    ctx.globalAlpha = a;
+                    ctx.fillRect(px[i] | 0, py[i] | 0, 2, 2);
+                }
+                ctx.globalAlpha = 1;
+            },
+            get count() {
+                return Pos.count;
+            },
+            full() {
+                return Pos.count >= MAX;
+            },
+        };
+    }
+
+    function makeArrayBackend() {
+        const arr = [];
+        return {
+            name: 'array',
+            spawn(x, y, vx, vy) {
+                if (arr.length >= MAX) return;
+                arr.push({x, y, vx, vy, t: 0});
+            },
+            tick(dt, gx, gy, gstr) {
+                for (let i = 0; i < arr.length; i++) {
+                    const p = arr[i];
+                    const dx = gx - p.x, dy = gy - p.y;
+                    const d2 = dx * dx + dy * dy + 100;
+                    const f = gstr / d2;
+                    p.vx += dx * f * dt;
+                    p.vy += dy * f * dt;
+                    p.vx *= 0.99;
+                    p.vy *= 0.99;
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.t += dt;
+                }
+                // The classic O(n) splice.
+                for (let i = arr.length - 1; i >= 0; i--) {
+                    if (arr[i].t > LIFETIME) arr.splice(i, 1);
+                }
+            },
+            draw(ctx) {
+                for (let i = 0; i < arr.length; i++) {
+                    const p = arr[i];
+                    const a = 1 - p.t / LIFETIME;
+                    if (a <= 0) continue;
+                    ctx.globalAlpha = a;
+                    ctx.fillRect(p.x | 0, p.y | 0, 2, 2);
+                }
+                ctx.globalAlpha = 1;
+            },
+            get count() {
+                return arr.length;
+            },
+            full() {
+                return arr.length >= MAX;
+            },
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Two backends for scheduling.
+    // Both expose: schedule(fn, priority), destroy()
+    // ─────────────────────────────────────────────────────────────────
+
+    function makeLiteScheduler() {
+        const s = createScheduler({maxTasks: 4096, onCapacityExceeded: 'grow', budgetMs: 8});
+        return {
+            name: 'lite-scheduler',
+            schedule(fn, prio = 'normal') {
+                s.schedule(fn,
+                    prio === 'high' ? Priority.UserInput :
+                        prio === 'low' ? Priority.Background :
+                            Priority.Normal);
+            },
+            destroy() {
+                s.destroy();
+            },
+        };
+    }
+
+    function makeSetTimeoutScheduler() {
+        return {
+            name: 'setTimeout',
+            schedule(fn) {
+                setTimeout(fn, 0);
+            },
+            destroy() {
+            },
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Mode controller
+    // ─────────────────────────────────────────────────────────────────
+
+    let entities = null;
+    let scheduler = null;
+    let modeMeta = {arena: true, sched: true, name: 'Mode A · Both Libraries'};
+
+    function applyMode(useArena, useScheduler, name) {
+        if (scheduler) scheduler.destroy();
+        entities = useArena ? makeArenaBackend() : makeArrayBackend();
+        scheduler = useScheduler ? makeLiteScheduler() : makeSetTimeoutScheduler();
+        modeMeta = {arena: useArena, sched: useScheduler, name};
+        document.getElementById('ov-mode').textContent = name;
+        // Seed with a starting puff.
+        for (let i = 0; i < 1500; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * 80;
+            entities.spawn(
+                gravityX + Math.cos(a) * r,
+                gravityY + Math.sin(a) * r,
+                (Math.random() - 0.5) * 80,
+                (Math.random() - 0.5) * 80,
+            );
+        }
+    }
+
+    applyMode(true, true, 'Mode A · Both Libraries');
+
+    document.getElementById('modes').addEventListener('click', (e) => {
+        const m = e.target.closest('.mode');
+        if (!m) return;
+        document.querySelectorAll('.mode').forEach(x => x.classList.remove('active'));
+        m.classList.add('active');
+        const useArena = m.dataset.arena === '1';
+        const useSched = m.dataset.sched === '1';
+        const name = m.querySelector('.label').textContent + ' · ' + m.querySelector('.name').textContent;
+        applyMode(useArena, useSched, name);
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Mouse interaction
+    // ─────────────────────────────────────────────────────────────────
+
+    cv.addEventListener('mousemove', (e) => {
+        if (e.buttons === 1) {
+            const r = cv.getBoundingClientRect();
+            gravityX = e.clientX - r.left;
+            gravityY = e.clientY - r.top;
+        }
+    });
+    cv.addEventListener('mousedown', (e) => {
+        const r = cv.getBoundingClientRect();
+        gravityX = e.clientX - r.left;
+        gravityY = e.clientY - r.top;
+    });
+    cv.addEventListener('wheel', (e) => {
+        gravityStr = Math.max(2000, Math.min(60000, gravityStr - e.deltaY * 40));
+        e.preventDefault();
+    }, {passive: false});
+
+    // ─────────────────────────────────────────────────────────────────
+    // Tap test — measures end-to-end latency from click to handler-runs.
+    // ─────────────────────────────────────────────────────────────────
+
+    const tapHistory = [];
+    const TAP_HISTORY_MAX = 30;
+
+    document.getElementById('tap').addEventListener('click', () => {
+        const t0 = performance.now();
+        scheduler.schedule(() => {
+            const dt = performance.now() - t0;
+            tapHistory.push(dt);
+            if (tapHistory.length > TAP_HISTORY_MAX) tapHistory.shift();
+
+            const tapEl = document.getElementById('s-tap');
+            tapEl.innerHTML = dt.toFixed(2) + '<span class="unit">ms</span>';
+            tapEl.style.color = dt < 2 ? 'var(--good)' : dt < 8 ? 'var(--accent)' : 'var(--bad)';
+
+            const recent = tapHistory.slice(-10);
+            const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+            document.getElementById('s-tap-avg').innerHTML = avg.toFixed(2) + '<span class="unit">ms</span>';
+        }, 'high');
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Sparklines
+    // ─────────────────────────────────────────────────────────────────
+
+    const frameHistory = [];
+
+    function drawSpark(canvas, data, color, max) {
+        const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+        const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+        const c = canvas.getContext('2d');
+        c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+        c.clearRect(0, 0, cw, ch);
+        if (data.length === 0) return;
+
+        const m = max || Math.max(20, ...data);
+        // 16ms guide line
+        c.strokeStyle = 'rgba(232, 113, 106, 0.15)';
+        c.setLineDash([2, 4]);
+        c.beginPath();
+        const y16 = ch - (16 / m) * (ch - 8) - 4;
+        c.moveTo(0, y16);
+        c.lineTo(cw, y16);
+        c.stroke();
+        c.setLineDash([]);
+
+        // Fill under curve
+        c.fillStyle = color + '20'; // 12.5% alpha
+        c.beginPath();
+        for (let i = 0; i < data.length; i++) {
+            const x = (i / (TAP_HISTORY_MAX - 1)) * cw;
+            const y = ch - (data[i] / m) * (ch - 8) - 4;
+            if (i === 0) c.moveTo(x, ch);
+            c.lineTo(x, y);
+        }
+        c.lineTo((data.length - 1) / (TAP_HISTORY_MAX - 1) * cw, ch);
+        c.closePath();
+        c.fill();
+
+        // Stroke
+        c.strokeStyle = color;
+        c.lineWidth = 1.5;
+        c.beginPath();
+        for (let i = 0; i < data.length; i++) {
+            const x = (i / (TAP_HISTORY_MAX - 1)) * cw;
+            const y = ch - (data[i] / m) * (ch - 8) - 4;
+            if (i === 0) c.moveTo(x, y);
+            else c.lineTo(x, y);
+        }
+        c.stroke();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Main loop — drives the simulation through the active scheduler.
+    // ─────────────────────────────────────────────────────────────────
+
+    let lastT = performance.now();
+    let fpsFrames = 0, fpsTime = lastT, fps = 0, frameMs = 0;
+
+    const sFps = document.getElementById('s-fps');
+    const sFrame = document.getElementById('s-frame');
+    const sHeap = document.getElementById('s-heap');
+    const ovParticles = document.getElementById('ov-particles');
+
+    // Pending-systems flag — for the setTimeout backend, we don't want to queue
+    // duplicate tick tasks if the previous one hasn't finished.
+    let tickPending = false;
+
+    function frame(now) {
+        const dt = Math.min(0.05, (now - lastT) / 1000);
+        lastT = now;
+
+        // Continuous spawn from gravity well center.
+        if (!entities.full()) {
+            for (let i = 0; i < SPAWN_PER_FRAME; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = Math.random() * 40;
+                entities.spawn(
+                    gravityX + Math.cos(a) * r,
+                    gravityY + Math.sin(a) * r,
+                    (Math.random() - 0.5) * 240,
+                    (Math.random() - 0.5) * 240,
+                );
+            }
+        }
+
+        // Trail effect.
+        ctx.fillStyle = 'rgba(8, 9, 11, 0.20)';
+        const r = cv.getBoundingClientRect();
+        ctx.fillRect(0, 0, r.width, r.height);
+
+        // Run the physics system through the active scheduler. With lite-scheduler
+        // this enqueues at Normal priority. With setTimeout it dispatches via the
+        // browser timer queue.
+        if (!tickPending) {
+            tickPending = true;
+            scheduler.schedule(() => {
+                const t0 = performance.now();
+                entities.tick(dt, gravityX, gravityY, gravityStr);
+                frameMs = frameMs * 0.92 + (performance.now() - t0) * 0.08;
+                tickPending = false;
+            });
+        }
+
+        // Drawing happens synchronously in the RAF callback — drawing is a
+        // render concern, scheduling is for simulation work.
+        ctx.fillStyle = modeMeta.arena ? '#d4a574' : '#e8716a';
+        entities.draw(ctx);
+
+        // Gravity well marker.
+        ctx.strokeStyle = '#7fa97f';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(gravityX, gravityY, 7, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // FPS / stats every ~250ms.
+        fpsFrames++;
+        if (now - fpsTime > 250) {
+            fps = (fpsFrames * 1000) / (now - fpsTime);
+            fpsTime = now;
+            fpsFrames = 0;
+            sFps.textContent = fps.toFixed(0);
+            sFps.style.color = fps > 55 ? 'var(--good)' : fps > 40 ? 'var(--accent)' : 'var(--bad)';
+
+            sFrame.innerHTML = frameMs.toFixed(2) + '<span class="unit">ms</span>';
+            sFrame.style.color = frameMs < 4 ? 'var(--good)' : frameMs < 10 ? 'var(--accent)' : 'var(--bad)';
+
+            if (performance.memory) {
+                sHeap.innerHTML = (performance.memory.usedJSHeapSize / 1048576).toFixed(1) + '<span class="unit">MB</span>';
+            }
+
+            frameHistory.push(frameMs);
+            if (frameHistory.length > TAP_HISTORY_MAX) frameHistory.shift();
+        }
+
+        ovParticles.textContent = entities.count.toLocaleString() + ' particles';
+
+        drawSpark(document.getElementById('spark-frame'), frameHistory, '#d4a574');
+        drawSpark(document.getElementById('spark-tap'), tapHistory, '#88c0d0');
+
+        requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+</script>
+</body>
+</html>

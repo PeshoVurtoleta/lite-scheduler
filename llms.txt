@@ -1,0 +1,119 @@
+# @zakkster/lite-scheduler
+
+> Zero-GC frame-budget scheduler with 5 strict priority lanes in ~330 lines.
+> MessageChannel-driven; pre-allocated task pool; immediate ring buffer.
+> Keeps user input responsive at <1 ms even under heavy background load.
+
+Use this library when you have:
+1. A continuous stream of background work (animation, particle systems,
+   lazy hydration, background fetches, etc.), AND
+2. User input that must remain responsive (taps, gestures, scroll).
+
+The browser provides `queueMicrotask`, `setTimeout(0)`, and
+`requestAnimationFrame` — none of which support priority. DIY priority
+(setTimeout + binary heap) takes 4-12 ms latency per priority shift.
+This library does it in ~0.4 ms.
+
+## API surface
+
+```ts
+import { createScheduler, Priority, CapacityError } from '@zakkster/lite-scheduler';
+
+const sched = createScheduler({
+  maxTasks: 2048,           // initial SLL pool size (positive int)
+  budgetMs: 10,             // ms per flush before yielding (> 0)
+  onCapacityExceeded: 'throw',  // 'throw' | 'grow' | 'drop'
+  onError: console.error,
+});
+
+// Priority lanes — listed strictly in execution order:
+Priority.Immediate   = 0   // bypasses budget; FIFO ring buffer
+Priority.UserInput   = 1   // highest SLL lane
+Priority.Normal      = 2   // default
+Priority.Background  = 3
+Priority.Idle        = 4   // lowest
+
+// Operations:
+sched.schedule(fn, priority?);     // O(1); silent no-op after destroy
+sched.shouldYield(): boolean;      // true if past budget for this flush
+sched.isBusy(): boolean;           // any pending work?
+sched.yieldTask(priority?): Promise<void>;
+sched.stats(): { activeSllTasks, activeImmediateTasks, poolCapacity,
+                 immediateCapacity, totalExecuted };
+sched.destroy();                   // idempotent; closes MessageChannel
+
+// Convenience module-level functions for a lazy-init default scheduler:
+import { schedule, shouldYield, yieldTask, setDefaultScheduler } from '@zakkster/lite-scheduler';
+schedule(fn, Priority.UserInput);
+```
+
+## Key invariants
+
+- All 5 priorities are honored strictly: every UserInput drains before any
+  Normal; every Normal before any Background; every Background before any Idle.
+- Immediate tasks bypass both the priority lanes AND the frame budget.
+- Tasks scheduled DURING a flush are picked up either in the same flush (if
+  budget remains) or the next macrotask. None are lost.
+- `shouldYield()` returns `true` outside an active flush — by design.
+- Cancellation is intentionally not provided. Use the captured-flag pattern.
+- Sync task errors → `onError`. Async errors (rejected promises returned from
+  `fn`) are NOT observed; wrap async logic in try/catch yourself.
+- `destroy()` is irreversible. After destroy: `schedule()` no-ops,
+  `yieldTask()` rejects, `isBusy()` returns `false`.
+- Out-of-range priority values are silently coerced to `Normal`.
+
+## Files
+
+- [README.md](README.md): Full documentation with mermaid diagrams,
+  case study, FAQ, edge cases. Start here.
+- [./Scheduler.js](./Scheduler.js): The implementation (~330 lines, MIT, ESM).
+- [./Scheduler.d.ts](./Scheduler.d.ts): TypeScript definitions.
+- [test/Scheduler.test.js](test/Scheduler.test.js): 36 vitest assertions
+  including config validation, priority semantics, capacity policies, the
+  "lost work" regression, and immediate ring buffer wraparound.
+- [bench/bench.js](bench/bench.js): 6-strategy comparison harness vs
+  setTimeout, queueMicrotask, raw MessageChannel, setTimeout+heap PQ, and
+  a pared-down React-scheduler clone.
+- [example/demo.html](example/demo.html): Side-by-side interactive demo
+  showing input latency under background load — lite-scheduler vs setTimeout(0).
+
+## Headline performance
+
+On a 2022 laptop, the head-of-line blocking test (1 high-prio task
+scheduled in the middle of 5,000 low-prio CPU-burning tasks):
+
+| Strategy | High-prio latency | vs lite-scheduler |
+|---|---:|---:|
+| **lite-scheduler** | **0.43 ms** | **1.00×** |
+| react-style (heap+MC+budget) | 1.04 ms | 2.42× |
+| setTimeout + heap PQ | 1.81 ms | 4.22× |
+| queueMicrotask (no priority) | 10.69 ms | 24.87× |
+| raw MessageChannel (no priority) | 11.52 ms | 26.80× |
+| setTimeout(0) (no priority) | 20.79 ms | 48.37× |
+
+Throughput on 10,000 no-op tasks: ~1.07 M tasks/sec, within 2× of raw
+MessageChannel (which has no scheduling features at all). Steady-state
+heap delta: 0 (after warmup).
+
+## When NOT to use this
+
+- You only have one type of work — no priority needed. Use `queueMicrotask`
+  or `setTimeout` directly.
+- Your work must be aligned with paint timing. Use `requestAnimationFrame`.
+- You need cancellable tasks with token APIs. Use `AbortController` or
+  build a thin wrapper that checks `signal.aborted` inside the task body.
+- You're in a Worker that doesn't need priority. Workers serialize work
+  naturally; the priority abstraction may be overkill.
+
+## Sibling packages
+
+Part of the `@zakkster/*` zero-GC ecosystem:
+
+- `@zakkster/lite-signal` — reactive graph (871 lines, 78 tests)
+- `@zakkster/lite-arena` — ECS with generational handles + SoA sparse sets
+- `@zakkster/lite-batch-buffer` — pre-allocated WebGL vertex buffer
+
+All four compose cleanly: the scheduler drives the frame, lite-arena
+manages entity state, lite-batch-buffer streams vertices to the GPU,
+lite-signal coordinates state changes. Together they fit comfortably in
+Twitch's 1 MB / 3 s extension budget.

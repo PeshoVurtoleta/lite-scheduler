@@ -1,0 +1,60 @@
+{
+  "name": "@zakkster/lite-scheduler",
+  "version": "1.0.0",
+  "description": "Zero-GC frame budget manager. Strict priority lanes, MessageChannel-driven, ~330 lines, no dependencies.",
+  "type": "module",
+  "main": "./Scheduler.js",
+  "module": "Scheduler.js",
+  "types": "./Scheduler.d.ts",
+  "exports": {
+    ".": {
+      "types": "./Scheduler.d.ts",
+      "import": "./Scheduler.js",
+      "default": "./Scheduler.js"
+    }
+  },
+  "files": [
+    "Scheduler.js",
+    "Scheduler.d.ts",
+    "README.md",
+    "llms.txt",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "node --expose-gc bench/bench.js",
+    "verify": "npm test && npm run bench"
+  },
+  "keywords": [
+    "scheduler",
+    "priority",
+    "frame-budget",
+    "zero-gc",
+    "zero-allocation",
+    "task-queue",
+    "message-channel",
+    "react-scheduler",
+    "request-idle-callback",
+    "macrotask",
+    "yield"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  },
+  "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
+  "homepage": "https://github.com/PeshoVurtoleta/lite-scheduler#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeshoVurtoleta/lite-scheduler.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PeshoVurtoleta/lite-scheduler/issues",
+    "email": "shinikchiev@yahoo.com"
+  },
+  "sideEffects": false
+}
