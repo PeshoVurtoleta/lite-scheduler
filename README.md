@@ -217,8 +217,8 @@ Measure:  ms from schedule(high) to high.run()
 %%{init: {"theme":"dark"}}%%
 xychart-beta horizontal
     title "High-priority task latency under load (lower is better)"
-    x-axis "ms" 0 --> 22
-    y-axis ["setTimeout(0)", "raw MessageChannel", "queueMicrotask", "setTimeout+heap PQ", "react-style", "lite-scheduler"]
+    x-axis ["setTimeout(0)", "raw MessageChannel", "queueMicrotask", "setTimeout+heap PQ", "react-style", "lite-scheduler"]
+    y-axis "ms" 0 --> 22
     bar [20.79, 11.52, 10.69, 1.81, 1.04, 0.43]
 ```
 
