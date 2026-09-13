@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-scheduler",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Zero-GC frame budget manager. Strict priority lanes, MessageChannel-driven, ~330 lines, no dependencies.",
   "type": "module",
   "main": "./Scheduler.js",
@@ -19,13 +19,15 @@
     "Scheduler.d.ts",
     "README.md",
     "llms.txt",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node --test test/*.test.js",
+    "torture": "node --expose-gc test/torture.mjs",
+    "torture:controls": "node test/controls.mjs",
     "bench": "node --expose-gc bench/bench.js",
-    "verify": "npm test && npm run bench"
+    "verify": "npm test && npm run torture && npm run torture:controls"
   },
   "keywords": [
     "scheduler",
@@ -45,7 +47,8 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "vitest": "^2.1.0"
+    "@zakkster/lite-gc-profiler": "^1.16.0",
+    "@zakkster/lite-leak": "^1.10.0"
   },
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "homepage": "https://github.com/PeshoVurtoleta/lite-scheduler#readme",

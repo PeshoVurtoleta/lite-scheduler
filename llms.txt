@@ -1,4 +1,4 @@
-# @zakkster/lite-scheduler
+# @zakkster/lite-scheduler v1.0.2
 
 > Zero-GC frame-budget scheduler with 5 strict priority lanes in ~330 lines.
 > MessageChannel-driven; pre-allocated task pool; immediate ring buffer.
@@ -10,7 +10,7 @@ Use this library when you have:
 2. User input that must remain responsive (taps, gestures, scroll).
 
 The browser provides `queueMicrotask`, `setTimeout(0)`, and
-`requestAnimationFrame` — none of which support priority. DIY priority
+`requestAnimationFrame` -- none of which support priority. DIY priority
 (setTimeout + binary heap) takes 4-12 ms latency per priority shift.
 This library does it in ~0.4 ms.
 
@@ -26,7 +26,7 @@ const sched = createScheduler({
   onError: console.error,
 });
 
-// Priority lanes — listed strictly in execution order:
+// Priority lanes -- listed strictly in execution order:
 Priority.Immediate   = 0   // bypasses budget; FIFO ring buffer
 Priority.UserInput   = 1   // highest SLL lane
 Priority.Normal      = 2   // default
@@ -45,6 +45,9 @@ sched.destroy();                   // idempotent; closes MessageChannel
 // Convenience module-level functions for a lazy-init default scheduler:
 import { schedule, shouldYield, yieldTask, setDefaultScheduler } from '@zakkster/lite-scheduler';
 schedule(fn, Priority.UserInput);
+
+// Package version:
+import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.2"
 ```
 
 ## Key invariants
@@ -54,9 +57,9 @@ schedule(fn, Priority.UserInput);
 - Immediate tasks bypass both the priority lanes AND the frame budget.
 - Tasks scheduled DURING a flush are picked up either in the same flush (if
   budget remains) or the next macrotask. None are lost.
-- `shouldYield()` returns `true` outside an active flush — by design.
+- `shouldYield()` returns `true` outside an active flush -- by design.
 - Cancellation is intentionally not provided. Use the captured-flag pattern.
-- Sync task errors → `onError`. Async errors (rejected promises returned from
+- Sync task errors -> `onError`. Async errors (rejected promises returned from
   `fn`) are NOT observed; wrap async logic in try/catch yourself.
 - `destroy()` is irreversible. After destroy: `schedule()` no-ops,
   `yieldTask()` rejects, `isBusy()` returns `false`.
@@ -68,14 +71,14 @@ schedule(fn, Priority.UserInput);
   case study, FAQ, edge cases. Start here.
 - [./Scheduler.js](./Scheduler.js): The implementation (~330 lines, MIT, ESM).
 - [./Scheduler.d.ts](./Scheduler.d.ts): TypeScript definitions.
-- [test/Scheduler.test.js](test/Scheduler.test.js): 36 vitest assertions
+- [test/Scheduler.test.js](test/Scheduler.test.js): 36 node:test assertions
   including config validation, priority semantics, capacity policies, the
   "lost work" regression, and immediate ring buffer wraparound.
 - [bench/bench.js](bench/bench.js): 6-strategy comparison harness vs
   setTimeout, queueMicrotask, raw MessageChannel, setTimeout+heap PQ, and
   a pared-down React-scheduler clone.
 - [example/demo.html](example/demo.html): Side-by-side interactive demo
-  showing input latency under background load — lite-scheduler vs setTimeout(0).
+  showing input latency under background load -- lite-scheduler vs setTimeout(0).
 
 ## Headline performance
 
@@ -97,7 +100,7 @@ heap delta: 0 (after warmup).
 
 ## When NOT to use this
 
-- You only have one type of work — no priority needed. Use `queueMicrotask`
+- You only have one type of work -- no priority needed. Use `queueMicrotask`
   or `setTimeout` directly.
 - Your work must be aligned with paint timing. Use `requestAnimationFrame`.
 - You need cancellable tasks with token APIs. Use `AbortController` or
@@ -109,9 +112,9 @@ heap delta: 0 (after warmup).
 
 Part of the `@zakkster/*` zero-GC ecosystem:
 
-- `@zakkster/lite-signal` — reactive graph (871 lines, 78 tests)
-- `@zakkster/lite-arena` — ECS with generational handles + SoA sparse sets
-- `@zakkster/lite-batch-buffer` — pre-allocated WebGL vertex buffer
+- `@zakkster/lite-signal` -- reactive graph (871 lines, 78 tests)
+- `@zakkster/lite-arena` -- ECS with generational handles + SoA sparse sets
+- `@zakkster/lite-batch-buffer` -- pre-allocated WebGL vertex buffer
 
 All four compose cleanly: the scheduler drives the frame, lite-arena
 manages entity state, lite-batch-buffer streams vertices to the GPU,

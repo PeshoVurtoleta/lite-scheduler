@@ -7,17 +7,17 @@
  *   B. setTimeout(fn, 0)           (the simplest async primitive)
  *   C. setTimeout + binary-heap PQ (the obvious DIY for priorities)
  *   D. queueMicrotask              (microtask queue, no priority)
- *   E. MessageChannel              (raw — no scheduling layer)
+ *   E. MessageChannel              (raw -- no scheduling layer)
  *   F. React-style scheduler       (a minimal min-heap + MessageChannel impl,
  *                                   mimicking React's scheduler/src/forks/Scheduler.js
  *                                   sans cancellation, timers, or starvation logic)
  *
  * Workloads:
- *   1. Throughput          — schedule N no-op tasks, measure total drain time
- *   2. Priority isolation  — 1k high-priority + 10k low-priority, measure
+ *   1. Throughput          -- schedule N no-op tasks, measure total drain time
+ *   2. Priority isolation  -- 1k high-priority + 10k low-priority, measure
  *                            time-to-completion of the LAST high-priority task
  *                            (the "head-of-line blocking" test)
- *   3. GC pressure         — 100k tasks; heap delta with --expose-gc
+ *   3. GC pressure         -- 100k tasks; heap delta with --expose-gc
  *
  * Run: node --expose-gc bench/bench.js
  */
@@ -35,9 +35,9 @@ function snapHeap() {
     return process.memoryUsage().heapUsed;
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Minimal binary heap for the DIY priority queue scheduler
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 class MinHeap {
     constructor() { this.h = []; this.seq = 0; }
@@ -78,9 +78,9 @@ class MinHeap {
     get size() { return this.h.length; }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Six scheduler facades — all expose schedule(fn, prio) + waitDone()
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
+// Six scheduler facades -- all expose schedule(fn, prio) + waitDone()
+// -----------------------------------------------------------------
 
 function liteSchedulerFacade() {
     const s = createScheduler({ maxTasks: 16384, onCapacityExceeded: 'grow' });
@@ -129,7 +129,7 @@ function heapPQFacade() {
     function drain() {
         scheduled = false;
         // Drain everything currently in the heap. (Same fairness model as a
-        // single setTimeout flush — works fine for batch workloads.)
+        // single setTimeout flush -- works fine for batch workloads.)
         while (heap.size > 0) {
             const fn = heap.pop();
             try { fn(); } catch (e) { console.error(e); }
@@ -207,7 +207,7 @@ function messageChannelFacade() {
 
 function reactStyleFacade() {
     // A pared-down React scheduler clone: min-heap + MessageChannel + frame budget.
-    // No starvation logic, no expiration timers — just the core "yield by deadline".
+    // No starvation logic, no expiration timers -- just the core "yield by deadline".
     const heap = new MinHeap();
     const ch = new MessageChannel();
     let scheduled = false;
@@ -259,14 +259,14 @@ const facadeFactories = [
     reactStyleFacade,
 ];
 
-// ─────────────────────────────────────────────────────────────────
-// Workload 1: throughput — drain N no-op tasks
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
+// Workload 1: throughput -- drain N no-op tasks
+// -----------------------------------------------------------------
 
 async function workloadThroughput(N) {
-    console.log(`\n${'─'.repeat(72)}`);
-    console.log(`Workload 1: Throughput — drain ${N.toLocaleString()} no-op tasks`);
-    console.log('─'.repeat(72));
+    console.log(`\n${'-'.repeat(72)}`);
+    console.log(`Workload 1: Throughput -- drain ${N.toLocaleString()} no-op tasks`);
+    console.log('-'.repeat(72));
 
     const results = [];
     for (const factory of facadeFactories) {
@@ -299,27 +299,27 @@ async function workloadThroughput(N) {
     return results;
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Workload 2: priority isolation — head-of-line blocking
+// -----------------------------------------------------------------
+// Workload 2: priority isolation -- head-of-line blocking
 //
 // Schedule 5,000 low-priority tasks that each burn ~0.1ms of CPU.
 // After 100 of them are queued, schedule ONE high-priority task that
 // records its latency. Then queue the rest.
 //
-// Result: a FIFO scheduler runs ~100 burns first → ~10ms latency.
+// Result: a FIFO scheduler runs ~100 burns first -> ~10ms latency.
 // A priority-respecting scheduler runs the high task in the first
-// drain after it's scheduled → <2ms latency.
-// ─────────────────────────────────────────────────────────────────
+// drain after it's scheduled -> <2ms latency.
+// -----------------------------------------------------------------
 
 async function workloadPriorityIsolation() {
     const LOW_BEFORE = 100;
     const LOW_AFTER = 4_900;
     const BURN_MS = 0.1;
-    console.log(`\n${'─'.repeat(72)}`);
-    console.log(`Workload 2: Head-of-line blocking — 1 high-prio surrounded by ${LOW_BEFORE + LOW_AFTER} low-prio`);
+    console.log(`\n${'-'.repeat(72)}`);
+    console.log(`Workload 2: Head-of-line blocking -- 1 high-prio surrounded by ${LOW_BEFORE + LOW_AFTER} low-prio`);
     console.log(`              low-prio tasks burn ~${BURN_MS}ms CPU each`);
     console.log(`              measures: latency from schedule(high) to high.run()`);
-    console.log('─'.repeat(72));
+    console.log('-'.repeat(72));
 
     function burn() {
         const t = performance.now();
@@ -373,17 +373,17 @@ async function workloadPriorityIsolation() {
     return results;
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Workload 3: GC pressure
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 async function workloadGC() {
     const N = 50_000;
-    console.log(`\n${'─'.repeat(72)}`);
-    console.log(`Workload 3: GC pressure — schedule ${N.toLocaleString()} tasks, measure heap delta`);
-    console.log(`              (same facade is warmed at full N then re-measured — captures`);
+    console.log(`\n${'-'.repeat(72)}`);
+    console.log(`Workload 3: GC pressure -- schedule ${N.toLocaleString()} tasks, measure heap delta`);
+    console.log(`              (same facade is warmed at full N then re-measured -- captures`);
     console.log(`               per-task allocation cost, not initial pool growth)`);
-    console.log('─'.repeat(72));
+    console.log('-'.repeat(72));
 
     const results = [];
     for (const factory of facadeFactories) {
@@ -404,7 +404,7 @@ async function workloadGC() {
     }
 
     const min = Math.min(...results.map(r => Math.max(0, r.heap)));
-    console.log(`${'Strategy'.padEnd(36)} ${'heap Δ'.padStart(14)}`);
+    console.log(`${'Strategy'.padEnd(36)} ${'heap D'.padStart(14)}`);
     for (const r of results) {
         const heap = r.heap < 1024
             ? `${r.heap} B`
@@ -416,13 +416,13 @@ async function workloadGC() {
     return results;
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Pretty-printer
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 function printResults(results) {
     const fastest = Math.min(...results.map(r => r.ms));
-    console.log(`${'Strategy'.padEnd(36)} ${'ms'.padStart(10)} ${'tasks/sec'.padStart(14)} ${'heap Δ'.padStart(12)} ${'vs best'.padStart(10)}`);
+    console.log(`${'Strategy'.padEnd(36)} ${'ms'.padStart(10)} ${'tasks/sec'.padStart(14)} ${'heap D'.padStart(12)} ${'vs best'.padStart(10)}`);
     for (const r of results) {
         const vs = (r.ms / fastest).toFixed(2) + '×';
         const heap = r.heap < 1024
@@ -430,18 +430,18 @@ function printResults(results) {
             : r.heap < 1024 * 1024
                 ? `${(r.heap / 1024).toFixed(1)} KB`
                 : `${(r.heap / 1024 / 1024).toFixed(2)} MB`;
-        const ops = r.opsPerSec ? Math.round(r.opsPerSec).toLocaleString() : '—';
+        const ops = r.opsPerSec ? Math.round(r.opsPerSec).toLocaleString() : '--';
         console.log(`${r.label.padEnd(36)} ${r.ms.toFixed(3).padStart(10)} ${ops.padStart(14)} ${heap.padStart(12)} ${vs.padStart(10)}`);
     }
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Run
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
-console.log('@zakkster/lite-scheduler — benchmark harness');
+console.log('@zakkster/lite-scheduler -- benchmark harness');
 console.log(`GC: ${GC ? 'enabled' : 'disabled (heap unreliable)'}`);
-console.log(`Node: ${process.version} · ${process.platform}/${process.arch}`);
+console.log(`Node: ${process.version} - ${process.platform}/${process.arch}`);
 
 const all = {};
 all.throughput10k = await workloadThroughput(10_000);

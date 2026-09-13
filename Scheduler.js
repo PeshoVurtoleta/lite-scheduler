@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-scheduler — Zero-GC Frame Budget Manager
+ * @zakkster/lite-scheduler -- Zero-GC Frame Budget Manager
  *
  * Architecture: Monomorphic Task Pool + Priority SLLs + Immediate Ring Buffer
  *
@@ -311,7 +311,7 @@ export function createScheduler(config = {}) {
     }
 
     /**
-     * True if the scheduler has any pending work — either a flush in
+     * True if the scheduler has any pending work -- either a flush in
      * progress, queued SLL tasks, or pending immediate tasks.
      */
     function isBusy() {
@@ -383,9 +383,12 @@ export function createScheduler(config = {}) {
     return { schedule, shouldYield, isBusy, yieldTask, stats, destroy };
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // GLOBAL BINDINGS (Lazy Initialized)
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+
+/** Package version. Kept in sync with package.json and llms.txt. */
+export const VERSION = "1.0.2";
 
 let _defaultScheduler = null;
 

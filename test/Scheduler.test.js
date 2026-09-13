@@ -1,11 +1,12 @@
 /**
- * @zakkster/lite-scheduler — Unit test suite.
+ * @zakkster/lite-scheduler -- Unit test suite.
  *
  * Tests use a per-test scheduler instance with explicit `destroy()` to keep
  * the test process clean.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
+import assert from 'node:assert/strict';
 import {
     createScheduler,
     Priority,
@@ -25,44 +26,44 @@ function flush(sched, timeout = 2000) {
     });
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Construction / configuration validation
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('createScheduler: config validation', () => {
     it('accepts a default config', () => {
         const s = createScheduler();
-        expect(s.isBusy()).toBe(false);
+        assert.equal(s.isBusy(), false);
         s.destroy();
     });
 
     it('rejects non-positive budgetMs', () => {
-        expect(() => createScheduler({ budgetMs: -5 })).toThrow(/budgetMs/);
-        expect(() => createScheduler({ budgetMs: NaN })).toThrow(/budgetMs/);
-        expect(() => createScheduler({ budgetMs: Infinity })).toThrow(/budgetMs/);
+        assert.throws(() => createScheduler({ budgetMs: -5 }), /budgetMs/);
+        assert.throws(() => createScheduler({ budgetMs: NaN }), /budgetMs/);
+        assert.throws(() => createScheduler({ budgetMs: Infinity }), /budgetMs/);
     });
 
     it('rejects negative maxTasks', () => {
-        expect(() => createScheduler({ maxTasks: -1 })).toThrow(/maxTasks/);
-        expect(() => createScheduler({ maxTasks: 1.5 })).toThrow(/maxTasks/);
+        assert.throws(() => createScheduler({ maxTasks: -1 }), /maxTasks/);
+        assert.throws(() => createScheduler({ maxTasks: 1.5 }), /maxTasks/);
     });
 
     it('rejects unknown capacity policies', () => {
-        expect(() => createScheduler({ onCapacityExceeded: 'panic' })).toThrow(/onCapacityExceeded/);
+        assert.throws(() => createScheduler({ onCapacityExceeded: 'panic' }), /onCapacityExceeded/);
     });
 
     it('accepts all three valid capacity policies', () => {
         for (const p of ['throw', 'grow', 'drop']) {
             const s = createScheduler({ onCapacityExceeded: p });
-            expect(s).toBeDefined();
+            assert.notEqual(s, undefined);
             s.destroy();
         }
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Basic scheduling / execution
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('schedule: basic execution', () => {
     let sched;
@@ -70,10 +71,10 @@ describe('schedule: basic execution', () => {
     afterEach(() => { sched.destroy(); });
 
     it('executes a single task', async () => {
-        const fn = vi.fn();
+        const fn = mock.fn();
         sched.schedule(fn);
         await flush(sched);
-        expect(fn).toHaveBeenCalledOnce();
+        assert.equal(fn.mock.callCount(), 1);
     });
 
     it('executes multiple tasks in FIFO order within a priority', async () => {
@@ -82,26 +83,26 @@ describe('schedule: basic execution', () => {
             sched.schedule(() => order.push(i));
         }
         await flush(sched);
-        expect(order).toEqual([0, 1, 2, 3, 4]);
+        assert.deepEqual(order, [0, 1, 2, 3, 4]);
     });
 
     it('starts in non-busy state', () => {
-        expect(sched.isBusy()).toBe(false);
+        assert.equal(sched.isBusy(), false);
     });
 
     it('tracks total execution count via stats', async () => {
-        expect(sched.stats().totalExecuted).toBe(0);
+        assert.equal(sched.stats().totalExecuted, 0);
         sched.schedule(() => {});
         sched.schedule(() => {});
         sched.schedule(() => {});
         await flush(sched);
-        expect(sched.stats().totalExecuted).toBe(3);
+        assert.equal(sched.stats().totalExecuted, 3);
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// Priority lanes — the headline feature
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+// Priority lanes -- the headline feature
+// -------------------------------------------------------------------
 
 describe('schedule: priority lanes', () => {
     let sched;
@@ -116,7 +117,7 @@ describe('schedule: priority lanes', () => {
         sched.schedule(() => order.push('user'), Priority.UserInput);
 
         await flush(sched);
-        expect(order).toEqual(['user', 'normal', 'background', 'idle']);
+        assert.deepEqual(order, ['user', 'normal', 'background', 'idle']);
     });
 
     it('drains Immediate before any SLL work', async () => {
@@ -126,8 +127,8 @@ describe('schedule: priority lanes', () => {
         sched.schedule(() => order.push('user'), Priority.UserInput);
 
         await flush(sched);
-        expect(order[0]).toBe('immediate');
-        expect(order).toEqual(['immediate', 'user', 'normal']);
+        assert.equal(order[0], 'immediate');
+        assert.deepEqual(order, ['immediate', 'user', 'normal']);
     });
 
     it('preserves FIFO within Immediate', async () => {
@@ -136,30 +137,30 @@ describe('schedule: priority lanes', () => {
             sched.schedule(() => order.push(i), Priority.Immediate);
         }
         await flush(sched);
-        expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert.deepEqual(order, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     });
 
     it('coerces out-of-range priorities to Normal', async () => {
         const order = [];
         sched.schedule(() => order.push('idle'), Priority.Idle);
-        sched.schedule(() => order.push('weird-high'), 99); // → Normal
+        sched.schedule(() => order.push('weird-high'), 99); // -> Normal
         sched.schedule(() => order.push('weird-neg'), -50); // -50 !== Immediate (0), coerced to Normal
         await flush(sched);
-        expect(order.indexOf('weird-high')).toBeLessThan(order.indexOf('idle'));
-        expect(order.indexOf('weird-neg')).toBeLessThan(order.indexOf('idle'));
+        assert.ok(order.indexOf('weird-high') < order.indexOf('idle'));
+        assert.ok(order.indexOf('weird-neg') < order.indexOf('idle'));
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Capacity policies
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('schedule: capacity policies', () => {
     it('throws CapacityError under "throw" policy when SLL is full', () => {
         const sched = createScheduler({ maxTasks: 2, onCapacityExceeded: 'throw' });
         sched.schedule(() => {});
         sched.schedule(() => {});
-        expect(() => sched.schedule(() => {})).toThrow(CapacityError);
+        assert.throws(() => sched.schedule(() => {}), CapacityError);
         sched.destroy();
     });
 
@@ -167,21 +168,21 @@ describe('schedule: capacity policies', () => {
         const sched = createScheduler({ maxTasks: 2, onCapacityExceeded: 'drop' });
         sched.schedule(() => {});
         sched.schedule(() => {});
-        expect(() => sched.schedule(() => {})).not.toThrow();
+        assert.doesNotThrow(() => sched.schedule(() => {}));
         sched.destroy();
     });
 
     it('grows under "grow" policy', async () => {
         const sched = createScheduler({ maxTasks: 2, onCapacityExceeded: 'grow' });
-        const fn = vi.fn();
+        const fn = mock.fn();
         sched.schedule(fn);
         sched.schedule(fn);
         sched.schedule(fn);
         sched.schedule(fn);
         sched.schedule(fn);
-        expect(sched.stats().poolCapacity).toBeGreaterThanOrEqual(4);
+        assert.ok(sched.stats().poolCapacity >= 4);
         await flush(sched);
-        expect(fn).toHaveBeenCalledTimes(5);
+        assert.equal(fn.mock.callCount(), 5);
         sched.destroy();
     });
 
@@ -191,15 +192,15 @@ describe('schedule: capacity policies', () => {
             for (let i = 0; i < 50; i++) sched.schedule(() => {});
             throw new Error('expected CapacityError to be thrown');
         } catch (e) {
-            expect(e).toBeInstanceOf(CapacityError);
+            assert.ok(e instanceof CapacityError);
         }
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Error handling
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('schedule: error handling', () => {
     it('catches sync errors and routes them to onError', async () => {
@@ -208,8 +209,8 @@ describe('schedule: error handling', () => {
         sched.schedule(() => { throw new Error('boom'); });
         sched.schedule(() => {});
         await flush(sched);
-        expect(errors).toHaveLength(1);
-        expect(errors[0].err.message).toBe('boom');
+        assert.equal(errors.length, 1);
+        assert.equal(errors[0].err.message, 'boom');
         sched.destroy();
     });
 
@@ -218,7 +219,7 @@ describe('schedule: error handling', () => {
         const sched = createScheduler({ onError: (msg, err) => errors.push(msg) });
         sched.schedule(() => { throw new Error('immediate-boom'); }, Priority.Immediate);
         await flush(sched);
-        expect(errors[0]).toMatch(/Immediate/);
+        assert.match(errors[0], /Immediate/);
         sched.destroy();
     });
 
@@ -228,19 +229,19 @@ describe('schedule: error handling', () => {
         sched.schedule(() => { throw new Error('first'); });
         sched.schedule(() => { ranAfter = true; });
         await flush(sched);
-        expect(ranAfter).toBe(true);
+        assert.equal(ranAfter, true);
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // shouldYield / isBusy
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('shouldYield', () => {
     it('returns true outside of an active flush', () => {
         const sched = createScheduler();
-        expect(sched.shouldYield()).toBe(true);
+        assert.equal(sched.shouldYield(), true);
         sched.destroy();
     });
 
@@ -249,7 +250,7 @@ describe('shouldYield', () => {
         let snapshot = null;
         sched.schedule(() => { snapshot = sched.shouldYield(); });
         await flush(sched);
-        expect(snapshot).toBe(false);
+        assert.equal(snapshot, false);
         sched.destroy();
     });
 });
@@ -257,25 +258,25 @@ describe('shouldYield', () => {
 describe('isBusy', () => {
     it('reflects pending work', async () => {
         const sched = createScheduler();
-        expect(sched.isBusy()).toBe(false);
+        assert.equal(sched.isBusy(), false);
         sched.schedule(() => {});
-        expect(sched.isBusy()).toBe(true);
+        assert.equal(sched.isBusy(), true);
         await flush(sched);
-        expect(sched.isBusy()).toBe(false);
+        assert.equal(sched.isBusy(), false);
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// yieldTask — promise-based scheduling
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+// yieldTask -- promise-based scheduling
+// -------------------------------------------------------------------
 
 describe('yieldTask', () => {
     it('resolves on the next tick', async () => {
         const sched = createScheduler();
         const before = Date.now();
         await sched.yieldTask();
-        expect(Date.now() - before).toBeLessThan(50);
+        assert.ok(Date.now() - before < 50);
         sched.destroy();
     });
 
@@ -286,26 +287,26 @@ describe('yieldTask', () => {
         const b = sched.yieldTask(Priority.UserInput).then(() => order.push('user'));
         const c = sched.yieldTask(Priority.Normal).then(() => order.push('normal'));
         await Promise.all([a, b, c]);
-        expect(order).toEqual(['user', 'normal', 'idle']);
+        assert.deepEqual(order, ['user', 'normal', 'idle']);
         sched.destroy();
     });
 
     it('rejects after destroy', async () => {
         const sched = createScheduler();
         sched.destroy();
-        await expect(sched.yieldTask()).rejects.toThrow(/destroyed/);
+        await assert.rejects(sched.yieldTask(), /destroyed/);
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// destroy() — cleanup semantics
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+// destroy() -- cleanup semantics
+// -------------------------------------------------------------------
 
 describe('destroy', () => {
     it('is idempotent', () => {
         const sched = createScheduler();
         sched.destroy();
-        expect(() => sched.destroy()).not.toThrow();
+        assert.doesNotThrow(() => sched.destroy());
     });
 
     it('schedule becomes a no-op', () => {
@@ -313,23 +314,23 @@ describe('destroy', () => {
         sched.destroy();
         let ran = false;
         sched.schedule(() => { ran = true; });
-        expect(ran).toBe(false);
-        expect(sched.isBusy()).toBe(false);
+        assert.equal(ran, false);
+        assert.equal(sched.isBusy(), false);
     });
 
     it('drops in-flight tasks', async () => {
         const sched = createScheduler();
-        const fn = vi.fn();
+        const fn = mock.fn();
         sched.schedule(fn);
         sched.destroy();
         await new Promise(r => setTimeout(r, 20));
-        expect(fn).not.toHaveBeenCalled();
+        assert.equal(fn.mock.callCount(), 0);
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Stats snapshot
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('stats', () => {
     it('reflects queued tasks before drain', () => {
@@ -338,9 +339,9 @@ describe('stats', () => {
         sched.schedule(() => {});
         sched.schedule(() => {}, Priority.Immediate);
         const s = sched.stats();
-        expect(s.activeSllTasks).toBe(2);
-        expect(s.activeImmediateTasks).toBe(1);
-        expect(s.totalExecuted).toBe(0);
+        assert.equal(s.activeSllTasks, 2);
+        assert.equal(s.activeImmediateTasks, 1);
+        assert.equal(s.totalExecuted, 0);
         sched.destroy();
     });
 
@@ -348,14 +349,14 @@ describe('stats', () => {
         const sched = createScheduler();
         for (let i = 0; i < 100; i++) sched.schedule(() => {});
         await flush(sched);
-        expect(sched.stats().totalExecuted).toBe(100);
+        assert.equal(sched.stats().totalExecuted, 100);
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// The "lost work" bug regression — tasks queued during a flush
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+// The "lost work" bug regression -- tasks queued during a flush
+// -------------------------------------------------------------------
 
 describe('regression: tasks scheduled inside a flush still run', () => {
     it('handles a task scheduling another task', async () => {
@@ -366,7 +367,7 @@ describe('regression: tasks scheduled inside a flush still run', () => {
             sched.schedule(() => order.push('inner'));
         });
         await flush(sched);
-        expect(order).toEqual(['outer', 'inner']);
+        assert.deepEqual(order, ['outer', 'inner']);
         sched.destroy();
     });
 
@@ -379,7 +380,7 @@ describe('regression: tasks scheduled inside a flush still run', () => {
         };
         sched.schedule(step);
         await flush(sched, 5000);
-        expect(count).toBe(100);
+        assert.equal(count, 100);
         sched.destroy();
     });
 
@@ -391,14 +392,14 @@ describe('regression: tasks scheduled inside a flush still run', () => {
             sched.schedule(() => order.push('immediate'), Priority.Immediate);
         });
         await flush(sched);
-        expect(order).toEqual(['sll', 'immediate']);
+        assert.deepEqual(order, ['sll', 'immediate']);
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
-// Frame budget — long-running tasks pause and resume
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
+// Frame budget -- long-running tasks pause and resume
+// -------------------------------------------------------------------
 
 describe('frame budget', () => {
     it('completes all tasks regardless of tight budget', async () => {
@@ -414,14 +415,14 @@ describe('frame budget', () => {
             });
         }
         await flush(sched, 10000);
-        expect(executed).toBe(50);
+        assert.equal(executed, 50);
         sched.destroy();
     });
 });
 
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 // Immediate ring buffer wraparound under growth
-// ─────────────────────────────────────────────────────────────────
+// -------------------------------------------------------------------
 
 describe('immediate ring buffer', () => {
     it('handles capacity growth correctly', async () => {
@@ -432,8 +433,8 @@ describe('immediate ring buffer', () => {
             sched.schedule(() => count++, Priority.Immediate);
         }
         await flush(sched, 5000);
-        expect(count).toBe(2000);
-        expect(sched.stats().immediateCapacity).toBeGreaterThanOrEqual(2048);
+        assert.equal(count, 2000);
+        assert.ok(sched.stats().immediateCapacity >= 2048);
         sched.destroy();
     });
 });

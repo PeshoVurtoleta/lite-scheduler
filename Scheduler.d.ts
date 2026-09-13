@@ -8,7 +8,7 @@
  *
  * - `Immediate` (0): Bypasses both the SLL lanes and the frame deadline.
  *   Drained in FIFO before any SLL work, even when the budget is exhausted.
- *   Use sparingly — there is no fairness guarantee with respect to the page.
+ *   Use sparingly -- there is no fairness guarantee with respect to the page.
  * - `UserInput` (1): Highest SLL lane. For tap/gesture handlers, focus events.
  * - `Normal` (2): Default lane.
  * - `Background` (3): Below normal. For prefetch, lazy hydration.
@@ -100,7 +100,7 @@ export interface Scheduler {
     shouldYield(): boolean;
 
     /**
-     * True if the scheduler has any pending work — a flush in progress,
+     * True if the scheduler has any pending work -- a flush in progress,
      * queued SLL tasks, or pending immediate tasks.
      */
     isBusy(): boolean;
@@ -157,3 +157,6 @@ export function yieldTask(priority?: number): Promise<void>;
 
 /** Convenience: stats from the default scheduler. */
 export function stats(): SchedulerStats;
+
+/** Package version. In sync with package.json and llms.txt. */
+export const VERSION: string;
