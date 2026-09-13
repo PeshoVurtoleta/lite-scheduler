@@ -13,7 +13,10 @@
  *     is meaningless without it);
  *   - a run with a peer faked missing (LSCHED_TORTURE_FAKE_MISSING_PEER, a
  *     test-only hook in torture.mjs's preflight -- see its header) exits 2 with
- *     the remedy on stderr (a fresh clone that skipped `npm install`).
+ *     the remedy on stderr (a fresh clone that skipped `npm install`);
+ *   - the perf file (test/perf.test.mjs) run WITHOUT `--expose-gc` exits
+ *     non-zero, names `--expose-gc`, and never reports a passing suite (the
+ *     perf-gate measure() throws without it -- perf-gate llms.txt:93-95).
  *
  * A suite that always fails is as useless as one that never does; both arms are
  * required. The in-process controls (t9) run every invocation, so a plain
@@ -29,6 +32,7 @@
 import { spawnSync } from 'node:child_process';
 
 const ENTRY = new URL('./torture.mjs', import.meta.url).pathname;
+const PERF_ENTRY = new URL('./perf.test.mjs', import.meta.url).pathname;
 
 /**
  * Run the torture entry. exposeGc toggles --expose-gc; breakOn sets the control
@@ -91,6 +95,16 @@ function fail(msg) {
         fail('missing-peer run did not print the missing-devDependency remedy on stderr: ' + JSON.stringify(r.stderr));
     }
     if (r.stdout.trim() === 'ok') fail('missing-peer run printed "ok"');
+}
+
+// 5. The perf file without --expose-gc must fail loudly, naming --expose-gc.
+// perf-gate's measure() throws without it, so its node:test cases fail.
+{
+    const res = spawnSync(process.execPath, ['--test', PERF_ENTRY], { encoding: 'utf8' });
+    const out = (res.stdout || '') + (res.stderr || '');
+    if (res.status === 0) fail('perf without --expose-gc exited 0 -- the perf gate is meaningless without it');
+    if (!/--expose-gc/.test(out)) fail('perf without --expose-gc did not name --expose-gc in its output');
+    if (/\bfail 0\b/.test(out)) fail('perf without --expose-gc reported a passing suite (fail 0)');
 }
 
 process.stdout.write('ok\n');

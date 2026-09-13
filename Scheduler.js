@@ -31,6 +31,42 @@ export const Priority = {
 const NUM_SLL_PRIORITIES = 4;
 const DEFAULT_BUDGET_MS = 10;
 
+/** The complete set of accepted `createScheduler` config keys. */
+const KNOWN_CONFIG_KEYS = ["maxTasks", "onCapacityExceeded", "budgetMs", "onError"];
+
+/**
+ * Levenshtein edit distance between two short strings. Cold path only (called
+ * once per unknown config key, at construction), so allocation is irrelevant.
+ */
+function editDistance(a, b) {
+    const m = a.length;
+    const n = b.length;
+    const row = new Array(n + 1);
+    for (let j = 0; j <= n; j++) row[j] = j;
+    for (let i = 1; i <= m; i++) {
+        let prev = row[0];
+        row[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const tmp = row[j];
+            const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost);
+            prev = tmp;
+        }
+    }
+    return row[n];
+}
+
+/** Nearest known config key to `key`, or null when nothing is close. Cold path. */
+function nearestConfigKey(key) {
+    let best = null;
+    let bestScore = Infinity;
+    for (let i = 0; i < KNOWN_CONFIG_KEYS.length; i++) {
+        const d = editDistance(key, KNOWN_CONFIG_KEYS[i]);
+        if (d < bestScore) { bestScore = d; best = KNOWN_CONFIG_KEYS[i]; }
+    }
+    return bestScore <= Math.max(2, (key.length / 2) | 0) ? best : null;
+}
+
 class TaskNode {
     constructor() {
         this.fn = null;
@@ -80,6 +116,19 @@ export class CapacityError extends Error {
  * }}
  */
 export function createScheduler(config = {}) {
+    // Reject unknown config keys with a nearest-key hint (fail closed, cold path).
+    if (config !== null && typeof config === "object") {
+        const keys = Object.keys(config);
+        for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            if (KNOWN_CONFIG_KEYS.indexOf(k) === -1) {
+                const hint = nearestConfigKey(k);
+                throw new Error('lite-scheduler: unknown config key "' + k + '"' +
+                    (hint ? ' -- did you mean "' + hint + '"?' : ''));
+            }
+        }
+    }
+
     let currentCapacity = config.maxTasks ?? 2048;
     const initialCapacity = currentCapacity;
     const policy = config.onCapacityExceeded ?? "throw"; // "throw", "grow", "drop"
@@ -96,6 +145,11 @@ export function createScheduler(config = {}) {
     }
     if (policy !== "throw" && policy !== "grow" && policy !== "drop") {
         throw new Error(`lite-scheduler: onCapacityExceeded must be one of "throw", "grow", "drop"; got ${policy}`);
+    }
+    // onError, when provided, must be callable. undefined means absent (the
+    // default above stands); an explicit null throws -- null is not zero.
+    if (config.onError !== undefined && typeof config.onError !== "function") {
+        throw new Error("lite-scheduler: onError must be a function, got " + typeof config.onError);
     }
 
     // --- ZERO-GC SLL TASK POOL ---
@@ -207,12 +261,20 @@ export function createScheduler(config = {}) {
      * @param {() => void} fn  Task body. Synchronous exceptions are caught
      *                         and routed to `onError`. Async errors (rejected
      *                         promises returned from `fn`) are NOT observed.
+     *                         Throws a `TypeError` at the call site when `fn`
+     *                         is not a function (before any pool touch).
      * @param {number} [priority=Priority.Normal]
-     *                         One of the `Priority` constants. Out-of-range
-     *                         values are coerced to `Normal`.
+     *                         One of the `Priority` constants. Any value that is
+     *                         not an integer in [UserInput..Idle] is coerced to
+     *                         `Normal`. Immediate (0) is matched exactly, before
+     *                         coercion.
      */
     function schedule(fn, priority = Priority.Normal) {
         if (destroyed) return;
+
+        if (typeof fn !== "function") {
+            throw new TypeError("lite-scheduler: schedule(fn) requires a function, got " + typeof fn);
+        }
 
         if (priority === Priority.Immediate) {
             if (((immTail - immHead) | 0) >= immCapacity) {
@@ -246,7 +308,7 @@ export function createScheduler(config = {}) {
         }
 
         // Sanitize priority bounds.
-        if (priority < Priority.UserInput || priority > Priority.Idle) {
+        if ((priority | 0) !== priority || priority < Priority.UserInput || priority > Priority.Idle) {
             priority = Priority.Normal;
         }
 
@@ -388,7 +450,7 @@ export function createScheduler(config = {}) {
 // -------------------------------------------------------------------
 
 /** Package version. Kept in sync with package.json and llms.txt. */
-export const VERSION = "1.0.2";
+export const VERSION = "1.0.3";
 
 let _defaultScheduler = null;
 

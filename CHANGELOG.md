@@ -4,6 +4,69 @@ All notable changes to `@zakkster/lite-scheduler` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-09-14
+
+The documented priority contract becomes TRUE for every input, and misuse now
+fails closed at the call site instead of detonating one macrotask later. The
+flush loop (`performWork`) is byte-identical to 1.0.2; every change lives in the
+`schedule()` enqueue door or the `createScheduler()` construction prologue. This
+release resolves the S-01..S-04 Known Issues recorded in 1.0.2.
+
+### Added
+
+- The perf gate: `test/perf.test.mjs` on `@zakkster/lite-perf-gate` ^1.4.2
+  (devDependency; `zgcSuite` at all-default thresholds) gates the sync enqueue
+  path -- 0 scavenges required at N and k*N, `poolCapacity` /
+  `immediateCapacity` counter delta 0 -- with an in-process must-fail control
+  and a `controls.mjs` arm proving the suite fails without `--expose-gc`.
+  npm scripts: `perf`; `verify` is now
+  `test && perf && torture && torture:controls`.
+- `decisions/0001-task-door.md` (repo-only): the S-04 throw-at-door and
+  conservation-observability decisions on the record.
+- 21 new tests (15 door/coercion regressions + 6 boundary pins); the unit
+  suite is now 63.
+
+### Changed
+
+- **S-03**: `config.onError` is now validated at construction. A provided-but-
+  non-callable sink (including explicit `null`) throws
+  `lite-scheduler: onError must be a function` at `createScheduler()`, not a
+  deferred uncaught exception at flush time. Migration: a non-callable onError
+  now errors at the call site; pass a function or omit it.
+- Unknown config keys are rejected at construction with the nearest known key
+  named, e.g. `createScheduler({ maxTask: 5000 })` throws
+  `unknown config key "maxTask" -- did you mean "maxTasks"?`. Migration: a
+  typo'd option now errors at the call site instead of being silently ignored.
+- **S-04**: `schedule(fn)` throws a `TypeError` when `fn` is not a function,
+  synchronously at the call site (after the post-destroy no-op check, before any
+  pool touch) -- never enqueued to fail at flush time. Migration: a non-function
+  task now errors at the call site. (See `decisions/0001-task-door.md`.)
+
+### Fixed
+
+- **S-01**: a NaN priority no longer jumps the queue into the UserInput lane.
+  Any priority that is not an integer in `[UserInput..Idle]` is coerced to
+  `Normal`, so `schedule(A, Normal); schedule(B, NaN)` now runs `[A, B]`.
+- **S-02**: an in-range fractional priority (`3.7`, `2.5`) no longer truncates
+  to a lower lane; it coerces to `Normal` and runs in schedule order. A string
+  such as `'3'` coerces to `Normal` as well. (Both S-01 and S-02 are
+  doc-conformance fixes -- the doc always said out-of-range values coerce to
+  Normal.)
+
+### Measured
+
+Measured on node v26.3.1, darwin arm64, 2026-09-14, with perf-gate 1.4.2 and
+gc-profiler 1.16.0. Sync enqueue throughput (`measureOps`, mixed-priority
+`schedule(noop, prio[i & 7])`, 200000 ops, 20000 warmup, `stabilize: 'deep'`):
+opsPerSec 56218607 before the doors -> 57674983 after (ratio 1.026, above the
+0.90 floor); `majorsPerKOp` 0 and `maxPauseMsPerOp` 0.000 in both runs. The
+perf-gate scavenge-scaling gate reads 0 scavenges at N (200000) and k*N
+(1600000) with `poolCapacity` / `immediateCapacity` counter delta 0, before and
+after -- the two door compares add no allocation and no measurable cost. At
+release: tests 63/63 pass; torture gate `majorsPerKOp=0 maxPauseMsPerOp=0.000`
+over 3000 schedule->flush cycles, heap growth -0.004 MB over 100000 cycles
+(ceiling 2 MB); perf suite 3/3 with the must-fail control caught.
+
 ## [1.0.2] - 2026-09-14
 
 Tooling, harness and hygiene only. No runtime behavior change: the diff of
@@ -44,7 +107,8 @@ MessageChannel claim is now gated, not asserted).
 
 The following door defects are RECORDED here and pinned as passing `t1` cases
 that document today's behavior; they are FIXED IN F1 (v1.0.3), not in this
-release:
+release. See the [1.0.3] head above for where each landed: S-01 and S-02 under
+Fixed; S-03, S-04, and unknown-key rejection under Changed.
 
 - **S-01** (fixed in F1): A NaN priority jumps the queue into the UserInput
   lane. The doc contract says "out-of-range values are coerced to Normal", and
@@ -85,6 +149,7 @@ release:
 - Capacity policies `throw` / `grow` / `drop`, capped at `maxTasks * 16`.
 - Module-default convenience exports and `setDefaultScheduler()`.
 
+[1.0.3]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.3
 [1.0.2]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.2
 [1.0.1]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.1
 [1.0.0]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.0

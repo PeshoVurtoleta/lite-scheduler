@@ -438,3 +438,138 @@ describe('immediate ring buffer', () => {
         sched.destroy();
     });
 });
+
+// -------------------------------------------------------------------
+// regression S-01/S-02: the priority door (F1, v1.0.3)
+// -------------------------------------------------------------------
+
+describe('regression S-01/S-02: every non-integer / out-of-range priority is Normal', () => {
+    let sched;
+    beforeEach(() => { sched = createScheduler(); });
+    afterEach(() => { sched.destroy(); });
+
+    // For each degenerate input, bracket the subject with a Normal task before
+    // and a Normal task after. Coercion to Normal means the subject shares the
+    // Normal lane and runs in strict schedule order: before < subject < after.
+    // A subject that jumps into UserInput (NaN, pre-fix) runs before 'before';
+    // one demoted to Background (3.7 / '3', pre-fix) runs after 'after'. Both
+    // break the ordering -- the discriminating probe.
+    for (const [label, prio] of [
+        ['NaN', NaN],
+        ['3.7', 3.7],
+        ['2.5', 2.5],
+        ['-1', -1],
+        ['99', 99],
+        ['Infinity', Infinity],
+        ["'3' (string)", '3'],
+    ]) {
+        it('coerces ' + label + ' to the Normal lane', async () => {
+            const order = [];
+            sched.schedule(() => order.push('before'), Priority.Normal);
+            sched.schedule(() => order.push('subject'), prio);
+            sched.schedule(() => order.push('after'), Priority.Normal);
+            await flush(sched);
+            assert.deepEqual(order, ['before', 'subject', 'after'],
+                'expected before < subject < after, got [' + order.join(',') + ']');
+        });
+    }
+
+    it('S-01 probe: schedule(Normal) then schedule(NaN) runs in order', async () => {
+        const order = [];
+        sched.schedule(() => order.push('normal-first'), Priority.Normal);
+        sched.schedule(() => order.push('nan'), NaN);
+        await flush(sched);
+        assert.deepEqual(order, ['normal-first', 'nan']);
+    });
+});
+
+// -------------------------------------------------------------------
+// createScheduler / schedule: the construction + task doors (F1, v1.0.3)
+// -------------------------------------------------------------------
+
+describe('createScheduler: door additions', () => {
+    it('rejects an unknown config key naming the nearest known key', () => {
+        assert.throws(() => createScheduler({ maxTask: 5000 }), /maxTasks/);
+    });
+
+    it('rejects a non-callable onError (string) at construction', () => {
+        assert.throws(() => createScheduler({ onError: 'x' }), /lite-scheduler: onError/);
+    });
+
+    it('rejects an explicit null onError at construction (null is not zero)', () => {
+        assert.throws(() => createScheduler({ onError: null }), /onError/);
+    });
+
+    it('throws a TypeError on schedule(null)', () => {
+        const sched = createScheduler();
+        assert.throws(() => sched.schedule(null), TypeError);
+        sched.destroy();
+    });
+
+    it('throws a TypeError on schedule(undefined)', () => {
+        const sched = createScheduler();
+        assert.throws(() => sched.schedule(undefined), TypeError);
+        sched.destroy();
+    });
+
+    it('throws a TypeError on a non-function Immediate task', () => {
+        const sched = createScheduler();
+        assert.throws(() => sched.schedule(42, Priority.Immediate), TypeError);
+        sched.destroy();
+    });
+
+    it('constructs without throwing when all four known keys are supplied', () => {
+        assert.doesNotThrow(() => {
+            const sched = createScheduler({
+                maxTasks: 8, budgetMs: 5, onCapacityExceeded: 'drop', onError: () => {},
+            });
+            sched.destroy();
+        });
+    });
+
+    it('constructs without throwing when called with no argument', () => {
+        assert.doesNotThrow(() => createScheduler().destroy());
+    });
+
+    it('constructs without throwing when called with an empty object', () => {
+        assert.doesNotThrow(() => createScheduler({}).destroy());
+    });
+
+    it('hints the nearest known key even when the typo is a case mismatch', () => {
+        assert.throws(() => createScheduler({ maxtasks: 5 }), /maxTasks/);
+    });
+});
+
+// -------------------------------------------------------------------
+// QA boundary sweep (F1 qa gate): post-destroy no-op, boolean priority
+// coercion, no-arg / empty-config construction, lowercase key hint.
+// -------------------------------------------------------------------
+
+describe('QA boundary sweep', () => {
+    it('post-destroy schedule(null) stays a silent no-op (destroyed check precedes the type door)', () => {
+        const sched = createScheduler();
+        sched.destroy();
+        assert.doesNotThrow(() => sched.schedule(null));
+        assert.doesNotThrow(() => sched.schedule(undefined));
+    });
+
+    it('a boolean true priority coerces to Normal, not Immediate', async () => {
+        const sched = createScheduler();
+        const order = [];
+        sched.schedule(() => order.push('bool-true'), true);
+        sched.schedule(() => order.push('normal'), Priority.Normal);
+        await flush(sched);
+        assert.deepEqual(order, ['bool-true', 'normal']);
+        sched.destroy();
+    });
+
+    it('a boolean false priority coerces to Normal, not Immediate', async () => {
+        const sched = createScheduler();
+        const order = [];
+        sched.schedule(() => order.push('bool-false'), false);
+        sched.schedule(() => order.push('normal'), Priority.Normal);
+        await flush(sched);
+        assert.deepEqual(order, ['bool-false', 'normal']);
+        sched.destroy();
+    });
+});

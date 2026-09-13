@@ -416,7 +416,7 @@ DONE WHEN
 ---
 package: "@zakkster/lite-scheduler"
 version_target: 1.0.3
-status: planned
+status: shipped -- /release 1.0.3 gates green 2026-09-14
 gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0

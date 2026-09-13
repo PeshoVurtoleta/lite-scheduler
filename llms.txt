@@ -1,4 +1,4 @@
-# @zakkster/lite-scheduler v1.0.2
+# @zakkster/lite-scheduler v1.0.3
 
 > Zero-GC frame-budget scheduler with 5 strict priority lanes in ~330 lines.
 > MessageChannel-driven; pre-allocated task pool; immediate ring buffer.
@@ -47,7 +47,7 @@ import { schedule, shouldYield, yieldTask, setDefaultScheduler } from '@zakkster
 schedule(fn, Priority.UserInput);
 
 // Package version:
-import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.2"
+import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.3"
 ```
 
 ## Key invariants
@@ -63,7 +63,13 @@ import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.2"
   `fn`) are NOT observed; wrap async logic in try/catch yourself.
 - `destroy()` is irreversible. After destroy: `schedule()` no-ops,
   `yieldTask()` rejects, `isBusy()` returns `false`.
-- Out-of-range priority values are silently coerced to `Normal`.
+- Any priority that is not an integer in [UserInput..Idle] -- NaN, a fraction,
+  Infinity, a string, out of range -- is coerced to Normal. Immediate (0) is
+  matched exactly, before coercion.
+- schedule(fn) throws a TypeError when fn is not a function (at the call site,
+  not at flush time).
+- An unknown config key is an error at construction, with the nearest known key
+  named; onError must be callable when provided.
 
 ## Files
 

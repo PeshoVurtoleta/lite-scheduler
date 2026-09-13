@@ -84,9 +84,13 @@ export interface Scheduler {
      *
      * @param fn        Task body. Synchronous exceptions are caught and routed
      *                  to `onError`. Async errors (rejected promises returned
-     *                  from `fn`) are NOT observed.
-     * @param priority  One of the `Priority` constants. Out-of-range values
-     *                  are coerced to `Normal`. Defaults to `Priority.Normal`.
+     *                  from `fn`) are NOT observed. Throws a `TypeError` at the
+     *                  call site when `fn` is not a function (not at flush time).
+     * @param priority  One of the `Priority` constants. Any value that is not an
+     *                  integer in `[UserInput..Idle]` -- NaN, a fraction,
+     *                  Infinity, a string, out of range -- is coerced to
+     *                  `Normal`; `Immediate` (0) is matched exactly, before
+     *                  coercion. Defaults to `Priority.Normal`.
      */
     schedule(fn: () => void, priority?: number): void;
 
@@ -132,8 +136,10 @@ export interface Scheduler {
  * sandboxed components; only use the module-default convenience functions
  * for top-level application glue.
  *
- * @throws Error when `budgetMs <= 0`, `maxTasks < 1`, or `onCapacityExceeded`
- *               is not one of `"throw" | "grow" | "drop"`.
+ * @throws Error when `budgetMs <= 0`, `maxTasks < 1`, `onCapacityExceeded` is
+ *               not one of `"throw" | "grow" | "drop"`, `onError` is provided
+ *               but not callable, or the config carries an unknown key (the
+ *               nearest known key is named in the message).
  */
 export function createScheduler(config?: SchedulerConfig): Scheduler;
 
