@@ -39,14 +39,16 @@ invocation. The measurable win is in the standalone primitive, not in
 retrofitting the shipped one. The retrofit stays on the candidates ledger
 (C1) behind a benchmark, per the B3 lesson: never change two things at once.
 
-**Registry facts, verified 2026-09-13:**
+**Registry facts (verified 2026-09-13; re-verified 2026-09-14 after the F0
+publish):**
 
 | Check | Result |
 | --- | --- |
-| `@zakkster/lite-scheduler` | 200, latest **1.0.1**, repo metadata correct (points at its own repo -- unlike the cross-wired lite-arena case in the blueprint) |
+| `@zakkster/lite-scheduler` | 200, latest **1.0.2** (F0 shipped + published 2026-09-14), repo metadata correct (points at its own repo -- unlike the cross-wired lite-arena case in the blueprint) |
 | `@zakkster/lite-fastbit-scheduler` | **404 -- the segregation name is free** (C2) |
 | `@zakkster/lite-gc-profiler` | 1.16.0 (devDep pin `^1.16.0`) |
 | `@zakkster/lite-leak` | 1.10.0 (devDep pin `^1.10.0`) |
+| `@zakkster/lite-perf-gate` | **1.4.2** (devDep pin `^1.4.2` from F1 -- the sync-lane scavenge-scaling gate) |
 
 **The single most important probe result:** the draft's core algorithm
 survived a 200k-op differential fuzz against a brute-force oracle --
@@ -187,6 +189,7 @@ test/
   FastBitScheduler.test.js   # new boundary suite (F2), node:test, LiteLru density
   dts-drift.test.js          # public surface <-> Scheduler.d.ts <-> llms.txt, both members
   controls.mjs               # gate-must-fail runner (no --expose-gc, BREAK variants)
+  perf.test.mjs              # lite-perf-gate zgcSuite -- sync-lane scavenge-scaling gate (F1+)
   torture.mjs                # entry: sequential tiers, prints exactly "ok", exit 0/1/2
   torture/
     harness.mjs              # seeded xorshift32, scratch pools, zero-alloc asserts, replay
@@ -282,6 +285,35 @@ scheduler with the item door removed must fail t1; a corrupted oracle must
 fail t5; a control that skips `destroy()` must fail t7; `controls.mjs`
 verifies the no-`--expose-gc` exit 1 and missing-peer exit 2 paths.
 
+### The perf gate (`test/perf.test.mjs`, F1 forward)
+
+`@zakkster/lite-perf-gate` 1.4.2 joins as the third instrument. Division of
+labor: torture t6 owns the ASYNC flush lane (gc-profiler majors + heap
+ceiling + pool byte-identity -- the macrotask fixture floor makes per-op
+byte gating dishonest there); the perf gate owns the SYNC lanes, where its
+scavenge-scaling verdict (zero-alloc => ~0 scavenges at N AND k*N) is the
+sharpest available instrument. F1's door work is all sync (schedule()
+enqueue, construction); F2's FastBitScheduler is pure sync -- both land
+squarely in its lane.
+
+- Own script (the flags differ from both `test` and `torture`):
+  `node --expose-gc --max-semi-space-size=4 --test test/perf.test.mjs` as
+  `"perf"`; `verify` becomes test && perf && torture && torture:controls.
+- `zgcSuite` is the primary API: scenarios `{name, setup, hot(state, n),
+  statsOf?, teardown?}`. `statsOf` runs outside the measurement window, so
+  reporting `stats().poolCapacity` (itself a documented allocator) as a
+  counter with max delta 0 is legal -- and proves the pool never grows
+  under churn.
+- Law 6 is satisfied natively: the detector self-validates on every
+  invocation (positive + negative controls; refuses to judge, code 2, if
+  either fails) and `config.mustFail` scenarios must trip in-process.
+  `controls.mjs` gains one arm: the perf file run without `--expose-gc`
+  must fail loudly (measure() throws, naming the run command).
+- Surfaces are read fresh each session from node_modules (lite-perf-gate
+  llms.txt + COOKBOOK.md; its trio example pairs it with gc-profiler and
+  lite-leak in one suite). Never from memory.
+- Thresholds never widen; `allowNoGc` never appears in a gated run.
+
 ---
 
 ## 4. Session order
@@ -311,7 +343,7 @@ written twice (the R4 lesson).
 ---
 package: "@zakkster/lite-scheduler"
 version_target: 1.0.2
-status: shipped -- /release gates green 2026-09-14
+status: shipped -- /release gates green; published to npm 2026-09-14 (latest 1.0.2)
 gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0
@@ -389,7 +421,7 @@ gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0
 leak_cycles: 4096
-peers: ["@zakkster/lite-gc-profiler", "@zakkster/lite-leak"]
+peers: ["@zakkster/lite-gc-profiler", "@zakkster/lite-leak", "@zakkster/lite-perf-gate"]
 findings: [S-01, S-02, S-03, S-04]
 depends_on: [F0]
 blocks: [F2]
@@ -433,21 +465,34 @@ TASKS
     stats().poolCapacity must never grow). Recommendation: behavioral only
     -- no new surface on a shipped closure for a property the torture suite
     can prove from outside.
+  - Stand up the perf gate (section 3, "The perf gate"): devDep
+    @zakkster/lite-perf-gate ^1.4.2; test/perf.test.mjs via zgcSuite --
+    the enqueue-door scenario (pre-sized pool, 'drop' policy, hoisted
+    noop task; ~0 scavenges at N and k*N; stats().poolCapacity counter
+    delta 0 via statsOf) plus a mustFail scenario (per-op closure) that
+    trips; the `perf` script; `verify` chain extended; the controls.mjs
+    arm that runs it without --expose-gc. The gate covers the NEW door
+    branches.
   - Flip the F0 `todo` doors to enforced green tests.
   - CHANGELOG under Fixed (S-01/S-02 are doc-conformance bugfixes) and
-    Changed (S-04 if A).
+    Changed (S-03 validation, unknown-key rejection, S-04 if A).
 
 HOT PATH
   The flush loop gains zero instructions -- every change is in schedule()
-  (enqueue) or createScheduler() (construction). Gate schedule() anyway:
-  assertOps on the enqueue path within noise of v1.0.2, number recorded in
-  the CHANGELOG.
+  (enqueue) or createScheduler() (construction). Gate schedule() anyway,
+  twice: the perf gate's scaling verdict proves the doored enqueue path
+  still allocates nothing (~0 scavenges at N and k*N); assertOps proves
+  throughput within noise of v1.0.2 (baseline measured BEFORE the doors
+  land). Both numbers recorded in the CHANGELOG.
 
 ASSERTIONS
   - The S-01 regression: fails against v1.0.2, passes after. Both proven.
   - Every t1 frame-scheduler door green; torture "ok"; controls fail.
   - Full unit suite green; no test weakened to pass.
-  - assertOps enqueue-path number recorded.
+  - `npm run perf` green: detector validated, mustFail trips, enqueue
+    scenario ~0 scavenges at both scales, poolCapacity delta 0.
+  - createScheduler({maxTask: 5}) throws naming `maxTasks`.
+  - assertOps enqueue-path number recorded (pre-door baseline + after).
 
 NON-GOALS
   No new features. No FastBitScheduler. No change to documented
@@ -471,7 +516,7 @@ gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0
 leak_cycles: 4096
-peers: ["@zakkster/lite-gc-profiler", "@zakkster/lite-leak"]
+peers: ["@zakkster/lite-gc-profiler", "@zakkster/lite-leak", "@zakkster/lite-perf-gate"]
 findings: [D-01, D-02, D-03, D-04, D-05, D-06, D-07]
 depends_on: [F1]
 blocks: [F3]
@@ -546,6 +591,12 @@ TASKS
   - Torture: light up the FastBitScheduler lanes of t0/t1/t2/t5/t6/t7 per
     section 3. The t5 fuzz goes to 1M ops. Conservation invariant checked
     between phases and after every t5 op.
+  - Perf gate: extend test/perf.test.mjs with the scenarios this
+    instrument was built for (pure sync): push/popMin steady churn and
+    the door-cost path; statsOf reports summed buckets byteLength as a
+    counter (max delta 0 -- rings never grow, byte-exact); the default
+    arrayBuffers signal guards the typed-array backing stores natively
+    (the B-08 blindness, covered by the instrument itself).
   - bench/: add the honest floor -- popMin vs (a) a naive 32-tier linear
     scan and (b) a binary heap of (priority, seq) pairs, same workload,
     provenance-stamped (node version, machine, date) per the blueprint
@@ -571,6 +622,8 @@ ASSERTIONS
   - Every D finding: named test, failed-before / passes-after, both proven.
   - t6: maxMajor 0, maxArrayBuffersGrowth 0, stabilize deep, over a mixed
     churn; buckets byteLength + cursor columns byte-identical before/after.
+  - Perf gate: push/popMin scenario ~0 scavenges at N and k*N;
+    buckets-byteLength counter delta 0; arrayBuffers within default.
   - The drain-loop repro from D-01 now THROWS at push(-1) -- the stranded-
     work scenario is impossible by construction.
   - `new FastBitScheduler(2**31)` throws naming the ceiling; every D-03
@@ -719,7 +772,7 @@ allocation on the steady path, doors that fail closed -- for both members.
 
 ### If you only do a subset
 
-1. **F0 first regardless.** Nothing is provable without the gate, and the
+1. **F0 first regardless** (DONE -- shipped + published 2026-09-14). Nothing is provable without the gate, and the
    MessageChannel-leak claim has been shipping ungated since 1.0.0.
 2. **F2 is the point.** It is the reason this roadmap exists: the proven
    mechanism from the draft, hardened to the suite law, under the family
