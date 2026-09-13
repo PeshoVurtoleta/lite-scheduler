@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>@zakkster/lite-scheduler — input latency under load</title>
+    <style>
+        :root {
+            --bg: #0a0e14;
+            --panel: #0f1419;
+            --fg: #d8dee9;
+            --dim: #4c566a;
+            --accent: #88c0d0;
+            --accent2: #ebcb8b;
+            --bad: #bf616a;
+            --good: #a3be8c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            min-height: 100%;
+            background: var(--bg);
+            color: var(--fg);
+            font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        body {
+            padding: 24px;
+        }
+
+        header {
+            max-width: 1200px;
+            margin: 0 auto 16px;
+        }
+
+        header h1 {
+            font-size: 16px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 4px;
+            font-weight: normal;
+        }
+
+        header p {
+            color: var(--dim);
+            margin-bottom: 4px;
+        }
+
+        .controls {
+            max-width: 1200px;
+            margin: 0 auto 16px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--panel);
+            border: 1px solid var(--dim);
+        }
+
+        .controls label {
+            color: var(--dim);
+        }
+
+        .controls input[type="range"] {
+            width: 200px;
+            accent-color: var(--accent);
+        }
+
+        .controls .val {
+            color: var(--accent2);
+            font-variant-numeric: tabular-nums;
+            min-width: 60px;
+            display: inline-block;
+        }
+
+        .grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--dim);
+            padding: 18px 20px;
+        }
+
+        .panel h2 {
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            font-weight: normal;
+        }
+
+        .panel.lite h2 {
+            color: var(--accent);
+        }
+
+        .panel.naive h2 {
+            color: var(--bad);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 24px 16px;
+            background: transparent;
+            color: var(--fg);
+            border: 1px solid var(--dim);
+            font: inherit;
+            cursor: pointer;
+            transition: border-color 80ms ease, color 80ms ease;
+            font-size: 14px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        .panel.lite .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .panel.naive .btn:hover {
+            border-color: var(--bad);
+            color: var(--bad);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+
+        .stat .lbl {
+            color: var(--dim);
+        }
+
+        .stat .v {
+            color: var(--accent2);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat .v.good {
+            color: var(--good);
+        }
+
+        .stat .v.bad {
+            color: var(--bad);
+        }
+
+        .gauge {
+            margin-top: 14px;
+            height: 60px;
+            border: 1px solid var(--dim);
+            position: relative;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .gauge canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .gauge-label {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            font-size: 10px;
+            color: var(--dim);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+
+        footer {
+            max-width: 1200px;
+            margin: 24px auto 0;
+            color: var(--dim);
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>lite-scheduler · input latency under load</h1>
+    <p>Both panels schedule <span id="hd-load" style="color:var(--accent2)">2000</span> CPU-burning background tasks per
+        frame.</p>
+    <p>Click each "I'm a user" button rapidly. The number is how long the click handler waited to start running.</p>
+</header>
+
+<div class="controls">
+    <label>Background load</label>
+    <input id="ld" type="range" min="0" max="6000" value="2000" step="100">
+    <span class="val" id="ld-v">2000 tasks/frame</span>
+    <span style="flex:1"></span>
+    <label>Burn per task</label>
+    <input id="bn" type="range" min="0.01" max="1" value="0.05" step="0.01">
+    <span class="val" id="bn-v">0.05 ms</span>
+</div>
+
+<div class="grid">
+    <div class="panel lite">
+        <h2>lite-scheduler (Priority.UserInput)</h2>
+        <button class="btn" id="btn-lite">I'm a user — click me</button>
+        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="lite-last">— ms</span></div>
+        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="lite-avg">— ms</span></div>
+        <div class="stat"><span class="lbl">Background tasks executed</span><span class="v" id="lite-exec">0</span>
+        </div>
+        <div class="stat"><span class="lbl">Scheduler busy</span><span class="v" id="lite-busy">no</span></div>
+        <div class="gauge"><span class="gauge-label">latency history (ms)</span>
+            <canvas id="lite-gauge"></canvas>
+        </div>
+    </div>
+    <div class="panel naive">
+        <h2>setTimeout(0) (no priority)</h2>
+        <button class="btn" id="btn-naive">I'm a user — click me</button>
+        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="naive-last">— ms</span></div>
+        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="naive-avg">— ms</span></div>
+        <div class="stat"><span class="lbl">Background tasks executed</span><span class="v" id="naive-exec">0</span>
+        </div>
+        <div class="stat"><span class="lbl">Pending in queue</span><span class="v" id="naive-pending">0</span></div>
+        <div class="gauge"><span class="gauge-label">latency history (ms)</span>
+            <canvas id="naive-gauge"></canvas>
+        </div>
+    </div>
+</div>
+
+<footer>
+    At realistic loads (~2000 tasks/frame, 0.05 ms each) the lite-scheduler panel handles clicks in &lt;1 ms while the
+    naive setTimeout panel lags 10–100 ms behind. Drag the sliders to see how each scales.
+</footer>
+
+<script type="module">
+    import {createScheduler, Priority} from '../Scheduler.js';
+
+    // ─────────────────────────────────────────────────────────────────
+    // Settings
+    // ─────────────────────────────────────────────────────────────────
+
+    const cfg = {
+        loadPerFrame: 2000,
+        burnMs: 0.05,
+    };
+
+    function burn() {
+        const t = performance.now();
+        while (performance.now() - t < cfg.burnMs) { /* spin */
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // lite-scheduler panel
+    // ─────────────────────────────────────────────────────────────────
+
+    const sched = createScheduler({
+        maxTasks: 16384,
+        onCapacityExceeded: 'grow',
+        budgetMs: 8,
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // lite-scheduler panel (Zero-GC Fix)
+    // ─────────────────────────────────────────────────────────────────
+
+    let liteExec = 0;
+
+    // 1. Hoist the task to a static function reference
+    function liteBackgroundTask() {
+        burn();
+        liteExec++;
+    }
+
+    function liteFeed() {
+        const target = cfg.loadPerFrame;
+        // BACKPRESSURE: Only queue more work if the scheduler isn't drowning.
+        // This prevents the Death Spiral if the burn rate exceeds the frame budget.
+        if (sched.stats().activeSllTasks < target * 4) {
+            for (let i = 0; i < target; i++) {
+                sched.schedule(liteBackgroundTask, Priority.Background);
+            }
+        }
+        requestAnimationFrame(liteFeed);
+    }
+
+    requestAnimationFrame(liteFeed);
+
+    // Helper purely for the manual button tap (allocating a closure here is fine
+    // because it only fires on human interaction, not 2,000 times a frame).
+    function naiveSchedule(fn) {
+        naivePending++;
+        setTimeout(() => {
+            fn();
+            naivePending--;
+        }, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Naive setTimeout(0) panel (Zero-GC Fix)
+    // ─────────────────────────────────────────────────────────────────
+
+    let naiveExec = 0;
+    let naivePending = 0;
+
+    // 1. Hoist the naive task and include the pending decrement here
+    //    so we don't have to allocate a closure inside setTimeout.
+    function naiveBackgroundTask() {
+        burn();
+        naiveExec++;
+        naivePending--;
+    }
+
+    function naiveFeed() {
+        const target = cfg.loadPerFrame;
+        for (let i = 0; i < target && naivePending < target * 4; i++) {
+            naivePending++;
+            // 2. Pass the static reference directly to setTimeout
+            setTimeout(naiveBackgroundTask, 0);
+        }
+        requestAnimationFrame(naiveFeed);
+    }
+
+    requestAnimationFrame(naiveFeed);
+
+    // ─────────────────────────────────────────────────────────────────
+    // Click handlers
+    // ─────────────────────────────────────────────────────────────────
+
+    const liteHistory = [];
+    const naiveHistory = [];
+
+    document.getElementById('btn-lite').addEventListener('click', (e) => {
+        sched.schedule(() => {
+            // e.timeStamp is DOMHighResTimeStamp, same as performance.now()
+            const dt = performance.now() - e.timeStamp;
+            pushLite(dt);
+        }, Priority.UserInput);
+    });
+
+    document.getElementById('btn-naive').addEventListener('click', () => {
+        const t0 = performance.now();
+        naiveSchedule(() => {
+            const dt = performance.now() - t0;
+            pushNaive(dt);
+        });
+    });
+
+    function pushLite(ms) {
+        liteHistory.push(ms);
+        if (liteHistory.length > 60) liteHistory.shift();
+        updateLite(ms);
+    }
+
+    function pushNaive(ms) {
+        naiveHistory.push(ms);
+        if (naiveHistory.length > 60) naiveHistory.shift();
+        updateNaive(ms);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // UI updates
+    // ─────────────────────────────────────────────────────────────────
+
+    const liteLast = document.getElementById('lite-last');
+    const liteAvg = document.getElementById('lite-avg');
+    const liteExecEl = document.getElementById('lite-exec');
+    const liteBusyEl = document.getElementById('lite-busy');
+    const naiveLast = document.getElementById('naive-last');
+    const naiveAvg = document.getElementById('naive-avg');
+    const naiveExecEl = document.getElementById('naive-exec');
+    const naivePendEl = document.getElementById('naive-pending');
+
+    function updateLite(ms) {
+        liteLast.textContent = ms.toFixed(2) + ' ms';
+        liteLast.className = 'v ' + (ms < 2 ? 'good' : ms < 8 ? '' : 'bad');
+        const recent = liteHistory.slice(-10);
+        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        liteAvg.textContent = avg.toFixed(2) + ' ms';
+    }
+
+    function updateNaive(ms) {
+        naiveLast.textContent = ms.toFixed(2) + ' ms';
+        naiveLast.className = 'v ' + (ms < 2 ? 'good' : ms < 8 ? '' : 'bad');
+        const recent = naiveHistory.slice(-10);
+        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        naiveAvg.textContent = avg.toFixed(2) + ' ms';
+    }
+
+    // Gauges.
+    function drawGauge(canvas, history, color) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+        const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+
+        ctx.scale(devicePixelRatio, devicePixelRatio);
+
+        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+
+        ctx.clearRect(0, 0, cw, ch);
+
+        if (history.length === 0) return;
+        const max = Math.max(20, ...history);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+
+        for (let i = 0; i < history.length; i++) {
+            const x = (i / 60) * cw;
+            const y = ch - (history[i] / max) * (ch - 6) - 3;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+
+        ctx.stroke();
+        // Threshold lines: 8ms (one frame at 120Hz), 16ms (60Hz).
+        ctx.strokeStyle = 'rgba(76, 86, 106, 0.5)';
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        const y16 = ch - (16 / max) * (ch - 6) - 3;
+        ctx.moveTo(0, y16);
+        ctx.lineTo(cw, y16);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function drawLoop() {
+        drawGauge(document.getElementById('lite-gauge'), liteHistory, '#88c0d0');
+        drawGauge(document.getElementById('naive-gauge'), naiveHistory, '#bf616a');
+
+        liteExecEl.textContent = liteExec.toLocaleString();
+        naiveExecEl.textContent = naiveExec.toLocaleString();
+        naivePendEl.textContent = naivePending.toLocaleString();
+
+        const s = sched.stats();
+
+        liteBusyEl.textContent = sched.isBusy() ? 'yes' : 'no';
+        requestAnimationFrame(drawLoop);
+    }
+
+    requestAnimationFrame(drawLoop);
+
+    // Sliders.
+    const ld = document.getElementById('ld');
+    const ldV = document.getElementById('ld-v');
+    const bn = document.getElementById('bn');
+    const bnV = document.getElementById('bn-v');
+    const hdLoad = document.getElementById('hd-load');
+
+    ld.addEventListener('input', () => {
+        cfg.loadPerFrame = +ld.value;
+        ldV.textContent = `${cfg.loadPerFrame} tasks/frame`;
+        hdLoad.textContent = cfg.loadPerFrame;
+    });
+
+    bn.addEventListener('input', () => {
+        cfg.burnMs = +bn.value;
+        bnV.textContent = `${cfg.burnMs} ms`;
+    });
+</script>
+</body>
+</html>
