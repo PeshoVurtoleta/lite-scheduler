@@ -182,3 +182,64 @@ test('control: a silently-added instance field is caught by the allowlist', () =
     for (const key of Object.keys(inst)) if (!FB_INTERNAL.includes(key)) caught = true;
     assert.ok(caught, 'a field outside the allowlist was not detected');
 });
+
+// --- llms.txt member parity: both members, both directions ------------------
+
+// The frame Scheduler INTERFACE members. `destroy` is the one NOT covered by the
+// module-export surface check above (it lives only on the instance), so it earns
+// its own forward assertion here.
+const FRAME_MEMBERS = ['schedule', 'shouldYield', 'isBusy', 'yieldTask', 'stats', 'destroy'];
+
+/** Method/getter tokens used off a `sched.` or `q.` receiver in llms.txt. */
+function llmsMemberUses(llmsText) {
+    const out = new Set();
+    const re = /\b(?:sched|q)\.([A-Za-z_$][\w$]*)/g;
+    let m;
+    while ((m = re.exec(llmsText)) !== null) out.add(m[1]);
+    return out;
+}
+
+test('(e) FORWARD: every documented member of both classes appears in llms.txt', () => {
+    // FastBitScheduler methods: name-with-paren use.
+    for (const m of FB_METHODS) {
+        assert.ok(new RegExp('\\b' + m + '\\s*\\(').test(LLMS), 'llms.txt does not use FB method ' + m + '()');
+    }
+    // FastBitScheduler getters: `q.name` property access.
+    for (const g of FB_GETTERS) {
+        assert.ok(new RegExp('\\bq\\.' + g + '\\b').test(LLMS), 'llms.txt does not read FB getter q.' + g);
+    }
+    // Frame scheduler interface members: mentioned by name.
+    for (const m of FRAME_MEMBERS) {
+        assert.ok(new RegExp('\\b' + m + '\\b').test(LLMS), 'llms.txt does not mention frame member ' + m);
+    }
+});
+
+test('(f) REVERSE: every sched./q. member used in llms.txt is declared in the d.ts', () => {
+    const declared = (name) =>
+        new RegExp('\\b' + name + '\\s*\\(').test(DTS) ||           // a method signature
+        new RegExp('readonly\\s+' + name + '\\b').test(DTS);         // a getter
+    const phantom = [];
+    for (const name of llmsMemberUses(LLMS)) {
+        if (name === 'data') continue; // not a scheduler member
+        if (!declared(name)) phantom.push(name);
+    }
+    assert.deepEqual(phantom, [], 'llms.txt uses members absent from the d.ts: ' + phantom.join(', '));
+});
+
+test('control: scrubbing peekPriority from an llms copy fails the FORWARD check', () => {
+    const mutated = LLMS.replace(/peekPriority/g, 'peekPrio_REMOVED');
+    assert.ok(!/\bpeekPriority\s*\(/.test(mutated), 'mutation did not scrub peekPriority use');
+});
+
+test('control: a phantom q.drain() injected into an llms copy fails the REVERSE check', () => {
+    const mutated = LLMS + '\n```ts\nq.drain();\n```\n';
+    const declared = (name) =>
+        new RegExp('\\b' + name + '\\s*\\(').test(DTS) ||
+        new RegExp('readonly\\s+' + name + '\\b').test(DTS);
+    const phantom = [];
+    for (const name of llmsMemberUses(mutated)) {
+        if (name === 'data') continue;
+        if (!declared(name)) phantom.push(name);
+    }
+    assert.ok(phantom.includes('drain'), 'a phantom q.drain() was not caught by the reverse check');
+});

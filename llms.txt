@@ -1,20 +1,28 @@
-# @zakkster/lite-scheduler v1.1.0
+# @zakkster/lite-scheduler v1.1.1
 
-> Zero-GC frame-budget scheduler with 5 strict priority lanes in ~330 lines.
-> MessageChannel-driven; pre-allocated task pool; immediate ring buffer.
-> Keeps user input responsive at <1 ms even under heavy background load.
+> One package, two independent zero-GC schedulers. `createScheduler` is a
+> MessageChannel-driven frame-budget manager with 5 strict priority lanes for
+> browser/UI work. `FastBitScheduler` is a pure O(1) 32-tier priority queue over
+> integer handles for engines and ECS. They share no code; import one and the
+> other tree-shakes away (`sideEffects: false`).
 
-Use this library when you have:
-1. A continuous stream of background work (animation, particle systems,
-   lazy hydration, background fetches, etc.), AND
-2. User input that must remain responsive (taps, gestures, scroll).
+Two members, one file, one intellectual lineage -- pick the one that fits:
+
+1. Reach for `createScheduler` when you have a continuous stream of background
+   work (animation, particle systems, lazy hydration, background fetches) AND
+   user input that must stay responsive (taps, gestures, scroll). It owns TIME:
+   a MessageChannel wakeup, a per-flush `budgetMs`, cooperative yielding.
+2. Reach for `FastBitScheduler` when you already live in SoA/handle land (a game
+   loop, an ECS, an audio-voice pool) and want "pop the highest-priority handle"
+   in constant time with zero allocation. It is pure DATA -- no time, no
+   macrotask -- so you pair it with the frame scheduler (or rAF) for a clock.
 
 The browser provides `queueMicrotask`, `setTimeout(0)`, and
 `requestAnimationFrame` -- none of which support priority. DIY priority
-(setTimeout + binary heap) takes 4-12 ms latency per priority shift.
-This library does it in ~0.4 ms.
+(setTimeout + binary heap) pays a per-priority-shift latency the frame scheduler
+avoids; see Headline performance for the measured number.
 
-## API surface
+## Member 1: createScheduler (the frame-budget manager)
 
 ```ts
 import { createScheduler, Priority, CapacityError } from '@zakkster/lite-scheduler';
@@ -47,10 +55,10 @@ import { schedule, shouldYield, yieldTask, setDefaultScheduler } from '@zakkster
 schedule(fn, Priority.UserInput);
 
 // Package version:
-import { VERSION } from '@zakkster/lite-scheduler'; // "1.1.0"
+import { VERSION } from '@zakkster/lite-scheduler'; // "1.1.1"
 ```
 
-## Key invariants
+### Key invariants
 
 - All 5 priorities are honored strictly: every UserInput drains before any
   Normal; every Normal before any Background; every Background before any Idle.
@@ -71,7 +79,7 @@ import { VERSION } from '@zakkster/lite-scheduler'; // "1.1.0"
 - An unknown config key is an error at construction, with the nearest known key
   named; onError must be callable when provided.
 
-## Second member: FastBitScheduler (v1.1.0)
+## Member 2: FastBitScheduler (the pure priority queue)
 
 A 32-tier bucket priority queue over non-negative Int32 HANDLES, with an O(1)
 routing mask -- "pop the highest priority" is a lowest-set-bit on a single 32-bit
@@ -79,8 +87,6 @@ int (two instructions: `x & -x`, then `Math.clz32`), no scan, however many tiers
 are live. It is the package's second member; it and the frame scheduler above
 never reference each other (decisions/0002), and a consumer importing only one of
 them tree-shakes the other away (`sideEffects: false`).
-
-### API surface
 
 ```ts
 import { FastBitScheduler, EMPTY } from '@zakkster/lite-scheduler';
@@ -106,7 +112,7 @@ q.numTiers;                 // tier count this instance was built with
 let h; while ((h = q.popMin()) !== EMPTY) { /* use handle h */ }
 ```
 
-### The contract
+### The handle contract
 
 - handles are non-negative Int32 (indices into your own SoA), never objects;
 - EMPTY (-1) is the ONE out-of-band value, and it is exported;
@@ -137,18 +143,34 @@ heads/tails/counts add numTiers * 4 * 3 more, e.g. 384 bytes at numTiers 32):
 | 256 | 32 | 32768 | |
 | 16777216 | 32 | 2147483648 | the documented ceiling, 2 GiB -- why the capacity door names it |
 
+## Composability: one clock, one router
+
+FastBitScheduler is pure data; the frame scheduler owns time. Pair them: route
+handles by tier with FastBitScheduler, drain within budget under the frame
+scheduler. Store the arena/SoA slot INDEX (always >= 0), never a generational
+handle (which can go negative); validate liveness on pop -- that liveness check
+IS the zero-alloc cancellation pattern (a "cancel" bumps a generation; the pop
+skips a dead index; no token is ever allocated). See the README Composability
+section for the full runnable lite-arena -> FastBitScheduler -> frame pipeline.
+
 ## Files
 
-- [README.md](README.md): Full documentation with mermaid diagrams,
-  case study, FAQ, edge cases. Start here.
-- [./Scheduler.js](./Scheduler.js): The implementation (~330 lines, MIT, ESM).
+- [README.md](README.md): Full documentation with mermaid diagrams, the two
+  quick-starts, the handle contract, the Composability pipeline, Benchmarks,
+  and the design records distilled. Start here.
+- [./Scheduler.js](./Scheduler.js): The implementation (both members, MIT, ESM).
 - [./Scheduler.d.ts](./Scheduler.d.ts): TypeScript definitions (both members).
 - [test/Scheduler.test.js](test/Scheduler.test.js): 57 node:test assertions for
   the frame scheduler -- config validation, priority semantics, capacity
   policies, the "lost work" regression, and immediate ring buffer wraparound.
-- [test/FastBitScheduler.test.js](test/FastBitScheduler.test.js): 37 node:test
+- [test/FastBitScheduler.test.js](test/FastBitScheduler.test.js): 44 node:test
   cases for the second member -- every door (item, capacity, numTiers, sizeOf),
   the full surface, the tier-31 sign bit, and the fill/throw/drain regression.
+- [test/dts-drift.test.js](test/dts-drift.test.js): 14 node:test surface-drift
+  guards -- version parity, both-member member parity in both directions, each
+  with a mutation control.
+- [test/docs.test.js](test/docs.test.js): 7 hermetic doc guards -- spine order,
+  relative links, ASCII, advertised-scripts-exist, provenance stamps.
 - decisions/0002-dual-family, 0003-storage, 0004-tiers, 0005-no-callbacks
   (repo-only): the F2 design records for the second member.
 - [bench/bench.js](bench/bench.js): 6-strategy comparison harness vs
@@ -156,24 +178,45 @@ heads/tails/counts add numTiers * 4 * 3 more, e.g. 384 bytes at numTiers 32):
   a pared-down React-scheduler clone.
 - [example/demo.html](example/demo.html): Side-by-side interactive demo
   showing input latency under background load -- lite-scheduler vs setTimeout(0).
+- [example/demo-scheduler-arena.html](example/demo-scheduler-arena.html): a
+  lite-arena + createScheduler particle demo, toggleable backends.
 
 ## Headline performance
 
-On a 2022 laptop, the head-of-line blocking test (1 high-prio task
-scheduled in the middle of 5,000 low-prio CPU-burning tasks):
+Measured on node v26.3.1, darwin arm64, 2026-09-14, @zakkster/lite-scheduler
+1.1.0 source. Re-run `npm run bench` for your own numbers; the ratios are stable.
+
+Head-of-line blocking (1 high-prio task scheduled in the middle of 5,000 low-prio
+CPU-burning tasks; latency from schedule to run, lower is better):
 
 | Strategy | High-prio latency | vs lite-scheduler |
 |---|---:|---:|
-| **lite-scheduler** | **0.43 ms** | **1.00×** |
-| react-style (heap+MC+budget) | 1.04 ms | 2.42× |
-| setTimeout + heap PQ | 1.81 ms | 4.22× |
-| queueMicrotask (no priority) | 10.69 ms | 24.87× |
-| raw MessageChannel (no priority) | 11.52 ms | 26.80× |
-| setTimeout(0) (no priority) | 20.79 ms | 48.37× |
+| **lite-scheduler** | **0.119 ms** | **1.00x** |
+| react-style (heap + MC + budget) | 0.232 ms | 1.95x |
+| setTimeout + heap PQ | 1.447 ms | 12.13x |
+| queueMicrotask (no priority) | 10.143 ms | 85.06x |
+| raw MessageChannel (no priority) | 10.089 ms | 84.61x |
+| setTimeout(0) (no priority) | 11.553 ms | 96.88x |
 
-Throughput on 10,000 no-op tasks: ~1.07 M tasks/sec, within 2× of raw
-MessageChannel (which has no scheduling features at all). Steady-state
-heap delta: 0 (after warmup).
+Throughput on 10,000 no-op tasks: lite-scheduler 1.095 ms, ~9.13 M tasks/sec --
+within 2x of raw MessageChannel (0.934 ms), which has no scheduling features.
+Steady-state heap delta across 50,000 scheduled tasks: ~0 (pool steady state).
+
+FastBitScheduler.popMin floor vs a naive 32-tier linear scan and a binary heap of
+(priority, seq) pairs, 512 items/tier, pops/sec in M/s (higher is better):
+
+| populated tiers | FastBit popMin | naive scan | binary heap |
+|---:|---:|---:|---:|
+| 1  | 32.9  | 29.3  | 20.5 |
+| 2  | 42.4  | 40.0  | 31.8 |
+| 8  | 100.1 | 66.1  | 26.9 |
+| 32 | 120.0 | 137.0 | 20.6 |
+
+The mask's guarantee is distribution-independent O(1). It beats the (priority,
+seq) heap ~5.8x at every tier count and beats the naive scan when the lowest
+populated tier is high (1..8 tiers here); the honest crossover is at 32 populated
+tiers, where tier 0 is always live so the scan short-circuits immediately and
+edges the mask (0.88x). See the README Benchmarks section.
 
 ## When NOT to use this
 
@@ -184,16 +227,21 @@ heap delta: 0 (after warmup).
   build a thin wrapper that checks `signal.aborted` inside the task body.
 - You're in a Worker that doesn't need priority. Workers serialize work
   naturally; the priority abstraction may be overkill.
+- (FastBitScheduler) your items are closures or objects, not integer handles;
+  or you need the queue to wake itself on a timer -- it is pure data, it never
+  wakes up on its own. Pair it with a clock.
+- (FastBitScheduler) you need more than 32 priority tiers -- the routing mask is
+  a single 32-bit int, so 32 is the hard ceiling.
 
 ## Sibling packages
 
 Part of the `@zakkster/*` zero-GC ecosystem:
 
-- `@zakkster/lite-signal` -- reactive graph (871 lines, 78 tests)
+- `@zakkster/lite-signal` -- reactive graph
 - `@zakkster/lite-arena` -- ECS with generational handles + SoA sparse sets
 - `@zakkster/lite-batch-buffer` -- pre-allocated WebGL vertex buffer
 
-All four compose cleanly: the scheduler drives the frame, lite-arena
-manages entity state, lite-batch-buffer streams vertices to the GPU,
-lite-signal coordinates state changes. Together they fit comfortably in
-Twitch's 1 MB / 3 s extension budget.
+All compose cleanly: the scheduler drives the frame, lite-arena manages entity
+state, lite-batch-buffer streams vertices to the GPU, lite-signal coordinates
+state changes. Together they fit comfortably in Twitch's 1 MB / 3 s extension
+budget.

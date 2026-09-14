@@ -446,8 +446,6 @@
         naiveExecEl.textContent = naiveExec.toLocaleString();
         naivePendEl.textContent = naivePending.toLocaleString();
 
-        const s = sched.stats();
-
         liteBusyEl.textContent = sched.isBusy() ? 'yes' : 'no';
         requestAnimationFrame(drawLoop);
     }

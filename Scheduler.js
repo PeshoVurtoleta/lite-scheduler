@@ -450,7 +450,7 @@ export function createScheduler(config = {}) {
 // -------------------------------------------------------------------
 
 /** Package version. Kept in sync with package.json and llms.txt. */
-export const VERSION = "1.1.0";
+export const VERSION = "1.1.1";
 
 let _defaultScheduler = null;
 

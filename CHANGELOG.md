@@ -4,6 +4,47 @@ All notable changes to `@zakkster/lite-scheduler` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-09-14
+
+Docs-only release: the runtime surface is byte-identical to 1.1.0 -- the only
+Scheduler.js change is the VERSION literal, and Scheduler.d.ts is untouched.
+The diff carries no logic.
+
+### Added
+
+- test/docs.test.js: hermetic doc guards (spine order, relative links, ASCII,
+  advertised-scripts-exist, provenance stamps), each a pure function over file
+  text with a mutation control that proves it has teeth.
+- dts-drift: llms.txt member parity for BOTH members, both directions (every
+  documented method/getter appears in llms.txt; every `sched.`/`q.` member used
+  in llms.txt is declared in the d.ts), plus a scrub control and a phantom
+  `q.drain()` control.
+- README Composability section: the lite-arena -> FastBitScheduler -> frame
+  scheduler pipeline, with the slot-index/liveness zero-alloc cancellation
+  recipe (store the arena slot INDEX, validate isAlive on pop) and the
+  pure-data caveat.
+- test/paste-run.mjs (repo-only): executes every runnable README/llms code
+  block from the repo root; block classification is fail-closed (an unlisted
+  fence is an error, not a skip).
+
+### Changed
+
+- README rebuilt on the LiteSepforge blueprint spine: the two-member family
+  told once, one spine, two package-specific inserts (the handle contract,
+  Benchmarks).
+- llms.txt rewritten as a family document (frame member, FastBit member, shared
+  invariants), every public member of both classes named.
+- Every benchmark number re-measured and stamped (node v26.3.1, darwin arm64,
+  2026-09-14); unstamped claims ("~330 lines", "5-10x", "2022 laptop") removed.
+  The Testing section lists only npm scripts that exist.
+
+### Fixed
+
+- The published 1.1.0 entry understated the FastBitScheduler suite's case
+  count: the qa boundary pins (+7) landed after the entry was drafted, so it
+  read seven cases short. The suite is 44 cases; corrected in place above, and
+  llms.txt carried the same stale count (now 44).
+
 ## [1.1.0] - 2026-09-14
 
 The package gains a second, independent member. The frame scheduler is
@@ -40,7 +81,7 @@ byte-identical: `createScheduler`, `schedule`, and `performWork` are unchanged
 - Error message prefix on the new member normalized to `lite-scheduler:` (the
   draft used `[scheduler]`; the draft was never published).
 - llms.txt: the stale "36 node:test assertions" line corrected to 57 (frame
-  scheduler; the reproducible `node --test` leaf count) plus the new 37-case
+  scheduler; the reproducible `node --test` leaf count) plus the new 44-case
   FastBitScheduler suite. README's two "36" mentions corrected to match.
 
 ### Measured
@@ -222,6 +263,7 @@ Fixed; S-03, S-04, and unknown-key rejection under Changed.
 - Capacity policies `throw` / `grow` / `drop`, capped at `maxTasks * 16`.
 - Module-default convenience exports and `setDefaultScheduler()`.
 
+[1.1.1]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.1.1
 [1.1.0]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.1.0
 [1.0.3]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.3
 [1.0.2]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.2

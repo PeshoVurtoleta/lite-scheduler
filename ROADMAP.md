@@ -653,7 +653,7 @@ DONE WHEN
 ---
 package: "@zakkster/lite-scheduler"
 version_target: 1.1.1
-status: planned
+status: shipped -- /release 1.1.1 gates green 2026-09-14
 gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0
@@ -766,6 +766,22 @@ DONE WHEN
 - **C4 -- REJECTED for this package: atomics / SharedArrayBuffer / MPSC.**
   Cross-thread scheduling changes every invariant (counts stop being
   single-writer); it is lite-channel territory, not a mode of this class.
+- **C5 -- example/ demo backlog** (noted in F3's audit; out of a docs
+  session's scope; the one mechanical fix -- a dead per-frame `stats()`
+  allocation -- already landed in F3). demo.html: per-frame uncached
+  getElementById (~:441-442), unthrottled toLocaleString textContent
+  (~:444-450), `Math.max(20, ...history)` spread (~:415), per-frame
+  setLineDash arrays (~:431, :437), `:hover` not wrapped in
+  `@media (hover: hover)` (:127, :132), pre-existing non-ASCII (em/en
+  dashes, middle dot, box drawing) -- demos sit outside the shipped-doc
+  ASCII guard. demo-scheduler-arena.html: importmap pins
+  `@zakkster/lite-arena@1.0.1` + `@zakkster/lite-scheduler@1.0.1` via
+  jsdelivr (:560-561; used surface exists so it functions, but stale and
+  network-loaded, not file://), per-frame toFixed/toLocaleString with no
+  ~10 Hz throttle (:956-970), uncached getElementById (:972-973),
+  mouse* instead of pointer events (:793, :800), non-standard
+  `performance.memory` (:963), unwrapped `:hover` (:149, :367, :438).
+  One demo-law session clears both files.
 
 ---
 

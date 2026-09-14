@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-scheduler",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Zero-GC frame budget manager. Strict priority lanes, MessageChannel-driven, ~330 lines, no dependencies.",
   "type": "module",
   "main": "./Scheduler.js",

@@ -1,95 +1,95 @@
 {
   "gc": true,
-  "timestamp": "2026-05-17T04:26:29.579Z",
+  "timestamp": "2026-09-14T02:18:43.671Z",
   "results": {
     "throughput10k": [
       {
         "label": "lite-scheduler",
-        "ms": 3.6380100000000084,
-        "heap": -2958592,
-        "opsPerSec": 2748755.50094694
+        "ms": 1.0953330000000037,
+        "heap": 16352,
+        "opsPerSec": 9129643.679136816
       },
       {
         "label": "setTimeout(0)",
-        "ms": 14.95132799999999,
-        "heap": 2112,
-        "opsPerSec": 668836.9086679128
+        "ms": 2.5420420000000092,
+        "heap": 31144,
+        "opsPerSec": 3933845.3101876224
       },
       {
         "label": "setTimeout + heap PQ",
-        "ms": 6.551701000000037,
-        "heap": 58312,
-        "opsPerSec": 1526321.1797974212
+        "ms": 2.9680000000000035,
+        "heap": 86056,
+        "opsPerSec": 3369272.237196761
       },
       {
         "label": "queueMicrotask",
-        "ms": 3.930921000000012,
-        "heap": -18392,
-        "opsPerSec": 2543933.0884543266
+        "ms": 0.6266669999999976,
+        "heap": -8488,
+        "opsPerSec": 15957438.320511593
       },
       {
         "label": "raw MessageChannel",
-        "ms": 4.764496000000008,
-        "heap": -624,
-        "opsPerSec": 2098857.885493026
+        "ms": 0.9337500000000034,
+        "heap": -3176,
+        "opsPerSec": 10709504.68540826
       },
       {
         "label": "react-style (heap + MC + budget)",
-        "ms": 6.770399999999995,
-        "heap": -32664,
-        "opsPerSec": 1477017.6060498653
+        "ms": 1.845832999999999,
+        "heap": 448,
+        "opsPerSec": 5417608.201825412
       }
     ],
     "priorityIsolation": [
       {
         "label": "lite-scheduler",
-        "ms": 0.3489140000001498
+        "ms": 0.11925000000007913
       },
       {
         "label": "setTimeout(0)",
-        "ms": 12.153592000000117
+        "ms": 11.55291699999998
       },
       {
         "label": "setTimeout + heap PQ",
-        "ms": 1.5001910000000862
+        "ms": 1.4465829999999187
       },
       {
         "label": "queueMicrotask",
-        "ms": 10.620613999999478
+        "ms": 10.142958999999792
       },
       {
         "label": "raw MessageChannel",
-        "ms": 10.628490000000056
+        "ms": 10.089374999999563
       },
       {
         "label": "react-style (heap + MC + budget)",
-        "ms": 0.3504670000002079
+        "ms": 0.23233299999992596
       }
     ],
     "gc": [
       {
         "label": "lite-scheduler",
-        "heap": -168
+        "heap": -35560
       },
       {
         "label": "setTimeout(0)",
-        "heap": 1400
+        "heap": 1768
       },
       {
         "label": "setTimeout + heap PQ",
-        "heap": 120
+        "heap": -14096
       },
       {
         "label": "queueMicrotask",
-        "heap": -427136
+        "heap": -435576
       },
       {
         "label": "raw MessageChannel",
-        "heap": 17112
+        "heap": -912
       },
       {
         "label": "react-style (heap + MC + budget)",
-        "heap": -4384
+        "heap": 15312
       }
     ]
   }
