@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>@zakkster/lite-scheduler — input latency under load</title>
+    <title>@zakkster/lite-scheduler -- input latency under load</title>
     <style>
         :root {
             --bg: #0a0e14;
@@ -26,39 +26,43 @@
             min-height: 100%;
             background: var(--bg);
             color: var(--fg);
-            font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+            font: 0.8125rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
         }
 
         body {
-            padding: 24px;
+            padding: 1.5rem;
         }
 
         header {
-            max-width: 1200px;
-            margin: 0 auto 16px;
+            max-width: 75rem;
+            margin: 0 auto 1rem;
         }
 
         header h1 {
-            font-size: 16px;
-            letter-spacing: 1.5px;
+            font-size: 1rem;
+            letter-spacing: 0.09375rem;
             text-transform: uppercase;
             color: var(--accent);
-            margin-bottom: 4px;
+            margin-bottom: 0.25rem;
             font-weight: normal;
         }
 
         header p {
             color: var(--dim);
-            margin-bottom: 4px;
+            margin-bottom: 0.25rem;
+        }
+
+        .hl {
+            color: var(--accent2);
         }
 
         .controls {
-            max-width: 1200px;
-            margin: 0 auto 16px;
+            max-width: 75rem;
+            margin: 0 auto 1rem;
             display: flex;
-            gap: 16px;
+            gap: 1rem;
             align-items: center;
-            padding: 12px 16px;
+            padding: 0.75rem 1rem;
             background: var(--panel);
             border: 1px solid var(--dim);
         }
@@ -68,36 +72,40 @@
         }
 
         .controls input[type="range"] {
-            width: 200px;
+            width: 12.5rem;
             accent-color: var(--accent);
         }
 
         .controls .val {
             color: var(--accent2);
             font-variant-numeric: tabular-nums;
-            min-width: 60px;
+            min-width: 3.75rem;
             display: inline-block;
         }
 
+        .spacer {
+            flex: 1;
+        }
+
         .grid {
-            max-width: 1200px;
+            max-width: 75rem;
             margin: 0 auto;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 16px;
+            gap: 1rem;
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--dim);
-            padding: 18px 20px;
+            padding: 1.125rem 1.25rem;
         }
 
         .panel h2 {
-            font-size: 12px;
-            letter-spacing: 2px;
+            font-size: 0.75rem;
+            letter-spacing: 0.125rem;
             text-transform: uppercase;
-            margin-bottom: 12px;
+            margin-bottom: 0.75rem;
             font-weight: normal;
         }
 
@@ -111,27 +119,29 @@
 
         .btn {
             width: 100%;
-            padding: 24px 16px;
+            padding: 1.5rem 1rem;
             background: transparent;
             color: var(--fg);
             border: 1px solid var(--dim);
             font: inherit;
             cursor: pointer;
             transition: border-color 80ms ease, color 80ms ease;
-            font-size: 14px;
-            letter-spacing: 1.5px;
+            font-size: 0.875rem;
+            letter-spacing: 0.09375rem;
             text-transform: uppercase;
-            margin-bottom: 14px;
+            margin-bottom: 0.875rem;
         }
 
-        .panel.lite .btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
+        @media (hover: hover) {
+            .panel.lite .btn:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
 
-        .panel.naive .btn:hover {
-            border-color: var(--bad);
-            color: var(--bad);
+            .panel.naive .btn:hover {
+                border-color: var(--bad);
+                color: var(--bad);
+            }
         }
 
         .btn:active {
@@ -141,8 +151,8 @@
         .stat {
             display: flex;
             justify-content: space-between;
-            padding: 4px 0;
-            font-size: 12px;
+            padding: 0.25rem 0;
+            font-size: 0.75rem;
         }
 
         .stat .lbl {
@@ -163,11 +173,11 @@
         }
 
         .gauge {
-            margin-top: 14px;
-            height: 60px;
+            margin-top: 0.875rem;
+            height: 3.75rem;
             border: 1px solid var(--dim);
             position: relative;
-            background: rgba(0, 0, 0, 0.3);
+            background: #0000004d;
         }
 
         .gauge canvas {
@@ -178,27 +188,27 @@
 
         .gauge-label {
             position: absolute;
-            top: 4px;
-            left: 6px;
-            font-size: 10px;
+            top: 0.25rem;
+            left: 0.375rem;
+            font-size: 0.625rem;
             color: var(--dim);
-            letter-spacing: 1.5px;
+            letter-spacing: 0.09375rem;
             text-transform: uppercase;
             pointer-events: none;
         }
 
         footer {
-            max-width: 1200px;
-            margin: 24px auto 0;
+            max-width: 75rem;
+            margin: 1.5rem auto 0;
             color: var(--dim);
-            font-size: 11px;
+            font-size: 0.6875rem;
         }
     </style>
 </head>
 <body>
 <header>
-    <h1>lite-scheduler · input latency under load</h1>
-    <p>Both panels schedule <span id="hd-load" style="color:var(--accent2)">2000</span> CPU-burning background tasks per
+    <h1>lite-scheduler - input latency under load</h1>
+    <p>Both panels schedule <span id="hd-load" class="hl">2000</span> CPU-burning background tasks per
         frame.</p>
     <p>Click each "I'm a user" button rapidly. The number is how long the click handler waited to start running.</p>
 </header>
@@ -207,7 +217,7 @@
     <label>Background load</label>
     <input id="ld" type="range" min="0" max="6000" value="2000" step="100">
     <span class="val" id="ld-v">2000 tasks/frame</span>
-    <span style="flex:1"></span>
+    <span class="spacer"></span>
     <label>Burn per task</label>
     <input id="bn" type="range" min="0.01" max="1" value="0.05" step="0.01">
     <span class="val" id="bn-v">0.05 ms</span>
@@ -216,9 +226,9 @@
 <div class="grid">
     <div class="panel lite">
         <h2>lite-scheduler (Priority.UserInput)</h2>
-        <button class="btn" id="btn-lite">I'm a user — click me</button>
-        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="lite-last">— ms</span></div>
-        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="lite-avg">— ms</span></div>
+        <button class="btn" id="btn-lite">I'm a user -- click me</button>
+        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="lite-last">-- ms</span></div>
+        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="lite-avg">-- ms</span></div>
         <div class="stat"><span class="lbl">Background tasks executed</span><span class="v" id="lite-exec">0</span>
         </div>
         <div class="stat"><span class="lbl">Scheduler busy</span><span class="v" id="lite-busy">no</span></div>
@@ -228,9 +238,9 @@
     </div>
     <div class="panel naive">
         <h2>setTimeout(0) (no priority)</h2>
-        <button class="btn" id="btn-naive">I'm a user — click me</button>
-        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="naive-last">— ms</span></div>
-        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="naive-avg">— ms</span></div>
+        <button class="btn" id="btn-naive">I'm a user -- click me</button>
+        <div class="stat"><span class="lbl">Last click latency</span><span class="v" id="naive-last">-- ms</span></div>
+        <div class="stat"><span class="lbl">Rolling avg (last 10)</span><span class="v" id="naive-avg">-- ms</span></div>
         <div class="stat"><span class="lbl">Background tasks executed</span><span class="v" id="naive-exec">0</span>
         </div>
         <div class="stat"><span class="lbl">Pending in queue</span><span class="v" id="naive-pending">0</span></div>
@@ -242,15 +252,15 @@
 
 <footer>
     At realistic loads (~2000 tasks/frame, 0.05 ms each) the lite-scheduler panel handles clicks in &lt;1 ms while the
-    naive setTimeout panel lags 10–100 ms behind. Drag the sliders to see how each scales.
+    naive setTimeout panel lags 10-100 ms behind. Drag the sliders to see how each scales.
 </footer>
 
 <script type="module">
     import {createScheduler, Priority} from '../Scheduler.js';
 
-    // ─────────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------
     // Settings
-    // ─────────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------
 
     const cfg = {
         loadPerFrame: 2000,
@@ -263,9 +273,41 @@
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------
+    // Cached element handles (all lookups happen once, at init)
+    // -----------------------------------------------------------------
+
+    const liteLast = document.getElementById('lite-last');
+    const liteAvg = document.getElementById('lite-avg');
+    const liteExecEl = document.getElementById('lite-exec');
+    const liteBusyEl = document.getElementById('lite-busy');
+    const naiveLast = document.getElementById('naive-last');
+    const naiveAvg = document.getElementById('naive-avg');
+    const naiveExecEl = document.getElementById('naive-exec');
+    const naivePendEl = document.getElementById('naive-pending');
+
+    const ld = document.getElementById('ld');
+    const ldV = document.getElementById('ld-v');
+    const bn = document.getElementById('bn');
+    const bnV = document.getElementById('bn-v');
+    const hdLoad = document.getElementById('hd-load');
+
+    // -----------------------------------------------------------------
+    // History rings: Float64Array, power-of-2 capacity, bitmask index.
+    // Logical cap 60, physical 64 (MASK 63). head is the newest slot.
+    // -----------------------------------------------------------------
+
+    const CAP = 60;
+    const RMASK = 63;
+    const liteRing = new Float64Array(64);
+    const naiveRing = new Float64Array(64);
+    let liteHead = -1, liteCount = 0;
+    let naiveHead = -1, naiveCount = 0;
+    let liteDirty = false, naiveDirty = false;
+
+    // -----------------------------------------------------------------
     // lite-scheduler panel
-    // ─────────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------
 
     const sched = createScheduler({
         maxTasks: 16384,
@@ -273,13 +315,11 @@
         budgetMs: 8,
     });
 
-    // ─────────────────────────────────────────────────────────────────
-    // lite-scheduler panel (Zero-GC Fix)
-    // ─────────────────────────────────────────────────────────────────
-
+    // Scheduled-minus-executed integer pair. Backpressure without stats():
+    // only queue more work when the in-flight count is under target * 4.
+    let liteScheduled = 0;
     let liteExec = 0;
 
-    // 1. Hoist the task to a static function reference
     function liteBackgroundTask() {
         burn();
         liteExec++;
@@ -287,11 +327,10 @@
 
     function liteFeed() {
         const target = cfg.loadPerFrame;
-        // BACKPRESSURE: Only queue more work if the scheduler isn't drowning.
-        // This prevents the Death Spiral if the burn rate exceeds the frame budget.
-        if (sched.stats().activeSllTasks < target * 4) {
+        if (liteScheduled - liteExec < target * 4) {
             for (let i = 0; i < target; i++) {
                 sched.schedule(liteBackgroundTask, Priority.Background);
+                liteScheduled++;
             }
         }
         requestAnimationFrame(liteFeed);
@@ -309,15 +348,13 @@
         }, 0);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Naive setTimeout(0) panel (Zero-GC Fix)
-    // ─────────────────────────────────────────────────────────────────
+    // -----------------------------------------------------------------
+    // Naive setTimeout(0) panel
+    // -----------------------------------------------------------------
 
     let naiveExec = 0;
     let naivePending = 0;
 
-    // 1. Hoist the naive task and include the pending decrement here
-    //    so we don't have to allocate a closure inside setTimeout.
     function naiveBackgroundTask() {
         burn();
         naiveExec++;
@@ -328,7 +365,6 @@
         const target = cfg.loadPerFrame;
         for (let i = 0; i < target && naivePending < target * 4; i++) {
             naivePending++;
-            // 2. Pass the static reference directly to setTimeout
             setTimeout(naiveBackgroundTask, 0);
         }
         requestAnimationFrame(naiveFeed);
@@ -336,12 +372,9 @@
 
     requestAnimationFrame(naiveFeed);
 
-    // ─────────────────────────────────────────────────────────────────
-    // Click handlers
-    // ─────────────────────────────────────────────────────────────────
-
-    const liteHistory = [];
-    const naiveHistory = [];
+    // -----------------------------------------------------------------
+    // Click handlers (human-rate: a per-click closure here is justified)
+    // -----------------------------------------------------------------
 
     document.getElementById('btn-lite').addEventListener('click', (e) => {
         sched.schedule(() => {
@@ -360,115 +393,150 @@
     });
 
     function pushLite(ms) {
-        liteHistory.push(ms);
-        if (liteHistory.length > 60) liteHistory.shift();
+        liteHead = (liteHead + 1) & RMASK;
+        liteRing[liteHead] = ms;
+        if (liteCount < CAP) liteCount++;
+        liteDirty = true;
         updateLite(ms);
     }
 
     function pushNaive(ms) {
-        naiveHistory.push(ms);
-        if (naiveHistory.length > 60) naiveHistory.shift();
+        naiveHead = (naiveHead + 1) & RMASK;
+        naiveRing[naiveHead] = ms;
+        if (naiveCount < CAP) naiveCount++;
+        naiveDirty = true;
         updateNaive(ms);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // UI updates
-    // ─────────────────────────────────────────────────────────────────
-
-    const liteLast = document.getElementById('lite-last');
-    const liteAvg = document.getElementById('lite-avg');
-    const liteExecEl = document.getElementById('lite-exec');
-    const liteBusyEl = document.getElementById('lite-busy');
-    const naiveLast = document.getElementById('naive-last');
-    const naiveAvg = document.getElementById('naive-avg');
-    const naiveExecEl = document.getElementById('naive-exec');
-    const naivePendEl = document.getElementById('naive-pending');
+    // -----------------------------------------------------------------
+    // UI updates (click-driven; toFixed is fine off the hot path)
+    // -----------------------------------------------------------------
 
     function updateLite(ms) {
         liteLast.textContent = ms.toFixed(2) + ' ms';
         liteLast.className = 'v ' + (ms < 2 ? 'good' : ms < 8 ? '' : 'bad');
-        const recent = liteHistory.slice(-10);
-        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
-        liteAvg.textContent = avg.toFixed(2) + ' ms';
+        let sum = 0;
+        const k = liteCount < 10 ? liteCount : 10;
+        for (let i = 0; i < k; i++) sum += liteRing[(liteHead - i) & RMASK];
+        liteAvg.textContent = (sum / k).toFixed(2) + ' ms';
     }
 
     function updateNaive(ms) {
         naiveLast.textContent = ms.toFixed(2) + ' ms';
         naiveLast.className = 'v ' + (ms < 2 ? 'good' : ms < 8 ? '' : 'bad');
-        const recent = naiveHistory.slice(-10);
-        const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
-        naiveAvg.textContent = avg.toFixed(2) + ' ms';
+        let sum = 0;
+        const k = naiveCount < 10 ? naiveCount : 10;
+        for (let i = 0; i < k; i++) sum += naiveRing[(naiveHead - i) & RMASK];
+        naiveAvg.textContent = (sum / k).toFixed(2) + ' ms';
     }
 
-    // Gauges.
-    function drawGauge(canvas, history, color) {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width = canvas.clientWidth * devicePixelRatio;
-        const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+    // -----------------------------------------------------------------
+    // Gauges: size + scale once at init, never resize in a draw call.
+    // -----------------------------------------------------------------
 
+    const DASH = [2, 4];
+    const SOLID = [];
+
+    function makeGauge(id) {
+        const $canvas = document.getElementById(id);
+        const ctx = $canvas.getContext('2d');
+        const cw = $canvas.clientWidth;
+        const ch = $canvas.clientHeight;
+        $canvas.width = cw * devicePixelRatio;
+        $canvas.height = ch * devicePixelRatio;
         ctx.scale(devicePixelRatio, devicePixelRatio);
+        return {ctx, cw, ch};
+    }
 
-        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const liteGauge = makeGauge('lite-gauge');
+    const naiveGauge = makeGauge('naive-gauge');
 
+    function drawGauge(gauge, ring, head, count, color) {
+        const ctx = gauge.ctx, cw = gauge.cw, ch = gauge.ch;
         ctx.clearRect(0, 0, cw, ch);
+        if (count === 0) return;
 
-        if (history.length === 0) return;
-        const max = Math.max(20, ...history);
+        let max = 20;
+        for (let i = 0; i < count; i++) {
+            const v = ring[(head - i) & RMASK];
+            if (v > max) max = v;
+        }
+
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
-
         ctx.beginPath();
-
-        for (let i = 0; i < history.length; i++) {
-            const x = (i / 60) * cw;
-            const y = ch - (history[i] / max) * (ch - 6) - 3;
+        for (let i = 0; i < count; i++) {
+            const v = ring[(head - count + 1 + i) & RMASK];
+            const x = (i / CAP) * cw;
+            const y = ch - (v / max) * (ch - 6) - 3;
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
-
         ctx.stroke();
-        // Threshold lines: 8ms (one frame at 120Hz), 16ms (60Hz).
-        ctx.strokeStyle = 'rgba(76, 86, 106, 0.5)';
-        ctx.setLineDash([2, 4]);
+
+        // Threshold line: 16 ms (one frame at 60Hz).
+        ctx.strokeStyle = '#4c566a80';
+        ctx.setLineDash(DASH);
         ctx.beginPath();
         const y16 = ch - (16 / max) * (ch - 6) - 3;
         ctx.moveTo(0, y16);
         ctx.lineTo(cw, y16);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.setLineDash(SOLID);
     }
 
+    // -----------------------------------------------------------------
+    // Draw loop: gauges repaint only when their ring changed (dirty flag);
+    // counters + busy text update behind a ~10Hz frame-counter mask.
+    // -----------------------------------------------------------------
+
+    let frameCount = 0;
+
     function drawLoop() {
-        drawGauge(document.getElementById('lite-gauge'), liteHistory, '#88c0d0');
-        drawGauge(document.getElementById('naive-gauge'), naiveHistory, '#bf616a');
-
-        liteExecEl.textContent = liteExec.toLocaleString();
-        naiveExecEl.textContent = naiveExec.toLocaleString();
-        naivePendEl.textContent = naivePending.toLocaleString();
-
-        liteBusyEl.textContent = sched.isBusy() ? 'yes' : 'no';
+        if (liteDirty) {
+            drawGauge(liteGauge, liteRing, liteHead, liteCount, '#88c0d0');
+            liteDirty = false;
+        }
+        if (naiveDirty) {
+            drawGauge(naiveGauge, naiveRing, naiveHead, naiveCount, '#bf616a');
+            naiveDirty = false;
+        }
+        if ((frameCount & 7) === 0) {
+            liteExecEl.textContent = liteExec.toLocaleString();
+            naiveExecEl.textContent = naiveExec.toLocaleString();
+            naivePendEl.textContent = naivePending.toLocaleString();
+            liteBusyEl.textContent = sched.isBusy() ? 'yes' : 'no';
+        }
+        frameCount++;
         requestAnimationFrame(drawLoop);
     }
 
     requestAnimationFrame(drawLoop);
 
-    // Sliders.
-    const ld = document.getElementById('ld');
-    const ldV = document.getElementById('ld-v');
-    const bn = document.getElementById('bn');
-    const bnV = document.getElementById('bn-v');
-    const hdLoad = document.getElementById('hd-load');
+    // -----------------------------------------------------------------
+    // Sliders (input events; plain concat, no template strings)
+    // -----------------------------------------------------------------
 
     ld.addEventListener('input', () => {
         cfg.loadPerFrame = +ld.value;
-        ldV.textContent = `${cfg.loadPerFrame} tasks/frame`;
+        ldV.textContent = cfg.loadPerFrame + ' tasks/frame';
         hdLoad.textContent = cfg.loadPerFrame;
     });
 
     bn.addEventListener('input', () => {
         cfg.burnMs = +bn.value;
-        bnV.textContent = `${cfg.burnMs} ms`;
+        bnV.textContent = cfg.burnMs + ' ms';
     });
+
+    // -----------------------------------------------------------------
+    // Dormant #profile hook (dev instrument; never load-bearing).
+    // -----------------------------------------------------------------
+
+    if (location.hash === '#profile') {
+        import('https://cdn.jsdelivr.net/npm/@zakkster/lite-layout-profiler').then((m) => {
+            window.__layout = m.createLayoutProfiler({warnToConsole: true});
+        });
+    }
 </script>
 </body>
 </html>

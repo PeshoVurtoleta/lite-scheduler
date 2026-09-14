@@ -781,7 +781,24 @@ DONE WHEN
   ~10 Hz throttle (:956-970), uncached getElementById (:972-973),
   mouse* instead of pointer events (:793, :800), non-standard
   `performance.memory` (:963), unwrapped `:hover` (:149, :367, :438).
-  One demo-law session clears both files.
+  CLEARED 2026-09-14 -- the C5 demo-law session rewrote both files to full
+  compliance: pipeline green (reviewer APPROVED, qa PASS on A1-A8) and the
+  in-browser lite-layout-profiler #profile gate measured 0 forced-reflow
+  violations on both files, driven (taps, mode switches, drag, wheel,
+  sliders). Importmap now resolves the scheduler to ../Scheduler.js (always
+  current source) and pins lite-arena@1.9.0; performance.memory row removed;
+  histories are Float64Array rings; every lookup init-cached; all telemetry
+  masked (~7.5 Hz) or windowed (250 ms). Repo-only diff; no release.
+  On record from the session:
+  (a) demo.html's footer claim ("<1 ms ... 10-100 ms") does not reproduce at
+      the default sliders on Chrome/darwin 2026-09: an A/B against the
+      pre-C5 file measured lite ~50.8 ms vs naive ~53.8 ms avg IDENTICALLY
+      on old and new -- pre-existing saturation physics (both panels share
+      one event loop), not the rewrite. A future session retunes the
+      default load or restamps the claim.
+  (b) demo-law guard tests were deliberately NOT added so shipped docs stay
+      byte-stable at published 1.1.1 -- guard rider queued for whichever
+      release session comes next.
 
 ---
 

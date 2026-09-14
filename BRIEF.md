@@ -1,135 +1,135 @@
 ---
 package: "@zakkster/lite-scheduler"
-session: F3
-version_target: 1.1.1
-status: shipped -- /release 1.1.1 gates green 2026-09-14
+session: C5
+version_target: none (repo-only; 1.1.1 stays; no release)
+status: done -- C5 cleared 2026-09-14 (reviewer APPROVED, qa PASS A1-A8, #profile 0 violations both demos; repo-only, no release)
 gc_maxMajor: 0
 gc_maxPauseMs: 4
 alloc_bytes_per_op: 0
 leak_cycles: 4096
 peers: []
-findings: [S-09]
-depends_on: [F2]
+findings: [C5]
+depends_on: [F3]
 blocks: []
 ---
 
-# lite-scheduler F3 -- the README describes the family, on the blueprint spine
+# lite-scheduler C5 -- the demos obey the same law they advertise
 
-This brief is the F3 session of `ROADMAP.md` (read the F3 block in full --
-it is the authoritative scope -- plus RESEARCH.md section 5 and finding S-09).
-One deliverable: the docs describe the two-member family, once, on the
-LiteSepforge blueprint spine, with every number stamped and every example
-running. The diff contains NO logic.
+This brief executes the C5 candidates-ledger entry (ROADMAP.md, "C -- the
+candidates ledger", C5 block: read it in full -- it is the violation
+inventory noted by F3's audit). One deliverable: both files under example/
+comply with the demo-audit law (hot-path allocation, forced reflow, CSS,
+pointer events, ASCII) with zero change to anything shipped.
 
 PURPOSE
-  After F2 the package IS the dual-scheduler family; the README still
-  describes the 2025 single-member package on a pre-blueprint spine. Docs
-  sessions come last so they are written once (the R4 lesson).
+  The demos are the package's storefront and its worst hypocrisy risk: a
+  zero-GC scheduler demoed by a page that allocates per frame. F3 fixed one
+  dead stats() call; the rest of the backlog is on record in C5. Clear it.
 
 ## Context the planner must load
 
-- ROADMAP.md, the F3 block ("# F3 -- v1.1.1 -- one story") -- verbatim scope,
-  including the doc-count sync bullet folded in from the 1.1.0 release.
-- RESEARCH.md section 5 (zero-alloc cancellation = generation bump + pop-side
-  isAlive check) and finding S-09.
-- ../LiteSepforge/README.md -- THE blueprint. Extract its exact spine:
-  ordered section titles, which are <details>, what each contains.
-- Current state: README.md, llms.txt, CHANGELOG.md, test/dts-drift.test.js,
-  bench/ (bench.js, fastbit-floor.mjs, bench-results.json),
-  example/ (demo.html, demo-scheduler-arena.html), Scheduler.d.ts (the full
-  export surface of BOTH members), package.json (scripts + files[]).
+- ROADMAP.md C5 block -- the known violation list, line-pinned.
+- example/demo.html (475 lines) and example/demo-scheduler-arena.html
+  (982 lines) -- current state, in full.
+- The demo-audit law (the orchestrator holds the skill text and will embed
+  it in the plan): zero-alloc frame loops and pointer handlers; reads
+  before writes (forced reflow); cache every element lookup at init in a
+  $-prefixed const; toFixed/toLocaleString only behind a ~10Hz
+  frame-counter mask; pointer events not mouse*; pre-allocated typed-array
+  ring buffers with power-of-2 bitmask; every :hover wrapped in
+  @media (hover: hover); rem by default, px only for hairlines; no inline
+  styles except custom properties; no bare {} scope blocks; ASCII-only
+  bytes (U+00D7, U+00B5 excepted; HTML entities are ASCII bytes).
 
 ## Ground truth (propagate, never re-derive)
 
-- Test counts: frame suite 57, FastBit suite 44, dts-drift 10 --
-  `npm test` total 111 / 0 fail.
-- Two shipped sites still say 37: llms.txt:149 and CHANGELOG.md:43
-  ("37-case", inside the published 1.1.0 entry). Fix both to 44; record the
-  CHANGELOG correction in 1.1.1's Fixed section; close with a
-  `grep -rn '\b37\b'` over shipped docs (the 48.37x bench multiplier is a
-  false positive, everything else must die).
-- npm scripts that EXIST: test, torture, torture:controls, perf, bench,
-  verify. There is NO test:watch (removed in F0); the current README still
-  advertises it -- the re-spined Testing section lists only real scripts.
-- files[] ships exactly: Scheduler.js, Scheduler.d.ts, README.md, llms.txt,
-  CHANGELOG.md, LICENSE (7 files with package.json, 29.2 kB at 1.1.0).
-- Gates at 1.1.0 (the baseline this session must not disturb): tests
-  111/0, torture ok exit 0, perf 8/8.
+- Published/repo version: 1.1.1 everywhere; the diff must not touch a
+  version site, a shipped file, or a test. files[] and `npm pack` are not
+  in play: example/ never ships.
+- Gates at 1.1.1 (must be untouched and re-proven once at the end):
+  `npm test` 122/0; `node --expose-gc test/torture.mjs` ok, exit 0.
+- lite-arena current is 1.9.0; the arena demo's used surface (new
+  Arena(max), registerComponent({field: Float32Array...}), SparseSet
+  .add/.idx/.data/.dense/.count, arena.spawn throws-when-full,
+  arena.despawn) all exist at 1.9.0 (verified against the catalog card by
+  the orchestrator). spawn is wrapped in try/catch and gated by full()
+  in the demo already.
+- Both demos require an HTTP server regardless of the importmap decision
+  (ES modules do not load over file://).
 
-TASKS (verbatim scope -- ROADMAP F3 is authoritative if these ever diverge)
+TASKS (the C5 ledger block is authoritative if these ever diverge)
 
-  - README re-spine per ../LiteSepforge/README.md, exactly: title + one-line
-    blockquote tagline; badges; positioning H2 ("The scheduler pair the
-    ecosystem was missing") with inline install + a runnable quick-start FOR
-    EACH member; TOC; Why this exists; What you get; a <details> deep-dive
-    per member (frame budget mechanics; the activeMask/lowest-set-bit trick);
-    API reference (signatures + a constants table: Priority lanes, EMPTY,
-    capacity ceiling, VERSION); Composability; <details> Zero-GC design notes
-    with the allocation table (what allocates: createScheduler, grow policy,
-    yieldTask, stats -- and what NEVER does: schedule/flush steady state,
-    push/popMin) + the gated numbers; Design decisions worth knowing
-    (0001..0005 distilled); Testing (counts + npm scripts); What this is not
-    (not a job system, not a thread pool, not lodash.debounce); Ecosystem;
-    License. ASCII throughout.
-  - The Composability section is the payoff of the dual design -- one
-    runnable end-to-end pipeline: lite-arena spawns entities ->
-    FastBitScheduler routes SLOT INDICES by priority tier -> the frame
-    scheduler drains within budgetMs via shouldYield. Three mandatory
-    caveats, stated loudly:
-      * arena HANDLES go negative at generation >= 2048 (by design) -- store
-        the arena slot INDEX (always >= 0), never the handle; validate
-        liveness on pop (isAlive) -- which IS the zero-alloc cancellation
-        pattern from RESEARCH.md section 5.
-      * FastBitScheduler is pure data -- pair it with the frame scheduler
-        (or rAF) for TIME; nothing about it wakes up on its own.
-      * tier naming via lite-fastbit32's BitMapper (a CONSUMER-side dep,
-        never the scheduler's): fail-closed tier names; hoist indices at
-        init, .get() is not a hot-loop call.
-    OPEN DECISION for the planner: how the paste-run check obtains
-    @zakkster/lite-arena (+ lite-fastbit32 if the example imports it) --
-    devDependency vs ephemeral install in the check script vs sibling-path
-    import. Zero RUNTIME deps is law; pick one, justify it.
-  - llms.txt: full family rewrite (it is what a sibling package's pipeline
-    reads -- a stale llms.txt is how a sibling hallucinates a signature).
-    dts-drift.test.js already guards it; extend to assert every public
-    member of BOTH classes appears, both directions.
-  - Doc-count sync (see Ground truth): llms.txt:149 and CHANGELOG.md:43,
-    37 -> 44; 1.1.1 Fixed section records the CHANGELOG correction.
-  - Bench: re-run bench.js on current node, stamp every README number with
-    version + node + machine + date; the May-2025 numbers either re-measured
-    or removed. FastBitScheduler floor numbers from F2 included.
-  - example/ demos: verify BOTH (demo.html, demo-scheduler-arena.html) load
-    against the current surface; audit demo hot-path code against the
-    demo-audit law (no per-frame allocation, no forced reflow); fix or note.
-  - CHANGELOG 1.1.1 docs entry. The diff contains NO logic -- assert it.
+  - demo.html: full demo-law pass. Known: per-frame uncached
+    getElementById + getContext + canvas.width resize in drawGauge/drawLoop;
+    unthrottled toLocaleString/textContent telemetry; Math.max(20,
+    ...history) spread; setLineDash array literals; live per-frame
+    sched.stats() backpressure allocation in liteFeed (replace with a
+    scheduled-minus-executed counter pair, zero alloc); :hover at ~:127/:132
+    unwrapped; inline style= at ~:201/:210; px-only CSS; non-ASCII (em/en
+    dashes, middle dot, box-drawing comment rules).
+  - demo-scheduler-arena.html: full demo-law pass. Known: importmap pins
+    @1.0.1 (stale); per-frame getBoundingClientRect (DOMRect alloc) in
+    frame() and mouse handlers; per-frame closure into scheduler.schedule;
+    per-frame sparkline canvas resize + getContext + spread + setLineDash +
+    color-string concat; unthrottled toLocaleString particles badge;
+    innerHTML + style.color telemetry writes; uncached getElementById in
+    frame() and handlers; mouse* events; non-standard performance.memory;
+    bare {} scope block; :hover at ~:149/:367/:438 unwrapped; px-only CSS;
+    non-ASCII.
+  - Importmap: @zakkster/lite-scheduler -> ../Scheduler.js (the repo's own
+    current source -- kills the stale-pin class for the self-package);
+    @zakkster/lite-arena -> jsdelivr pinned @1.9.0.
+  - Histories become pre-allocated Float64Array rings (pow2 capacity,
+    bitmask index); gauges/sparklines redraw only when their data changed
+    (dirty flag), never resize their canvas per frame (size at init + on
+    resize events only).
+  - Telemetry: number-only spans updated via textContent (no innerHTML);
+    color states via className using existing classes; counters behind a
+    ~10Hz frame-counter mask or the existing 250 ms stats window.
+  - performance.memory: remove the JS-heap stat row and its update; adjust
+    the one footer note that references the heap line.
+  - Both demos gain the dormant #profile hook from the demo-audit skill
+    (dynamic import of @zakkster/lite-layout-profiler from jsdelivr, only
+    when location.hash === '#profile'; never a static import, never in
+    files[]).
+  - ASCII policy: demo.html plain ASCII ("--", "-", "x"); arena demo keeps
+    its typography via HTML entities (&mdash; &middot; &#9646; etc.) and
+    CSS escapes (\25CF) -- all ASCII bytes; all JS/CSS comment banners
+    become ASCII rules.
 
 ASSERTIONS
 
-  - Spine section order matches LiteSepforge exactly; ASCII grep zero
-    (U+00D7 and U+00B5 excepted).
-  - Every code block in README and llms.txt RUNS (paste-run check, the
-    composability pipeline included). Blocks that are signature listings or
-    browser-only get classified as such by an explicit allowlist and are
-    parse-checked instead -- the allowlist is part of the plan, not ad hoc.
-  - Drift guard: every export in d.ts and llms.txt, both directions, both
-    members; every relative link resolves.
-  - Bench numbers stamped; no unstamped performance claim survives.
-  - `npm pack --dry-run` unchanged except README/llms/CHANGELOG bytes:
-    still 7 files, no new names.
-  - No-logic diff: Scheduler.js, Scheduler.d.ts, package.json byte-identical
-    to the 1.1.0 commit (`git diff --stat` proves it).
-  - The full 1.1.0 gate set still green, untouched: tests 111/0, torture ok.
+  - Diff purity: git diff touches ONLY example/demo.html,
+    example/demo-scheduler-arena.html, BRIEF.md, ROADMAP.md. Scheduler.js,
+    Scheduler.d.ts, package.json, README.md, llms.txt, CHANGELOG.md,
+    test/**, bench/** byte-identical.
+  - ASCII grep over example/ returns zero non-ASCII bytes except U+00D7.
+  - Zero occurrences inside any rAF-driven function body or pointer/input
+    handler of: getElementById, querySelector, getContext,
+    getBoundingClientRect, canvas .width=/.height= writes, array/object
+    literals, spread, template strings, closures passed to schedulers,
+    toLocaleString/toFixed/innerHTML/style.* outside a >=100ms throttle
+    window (className swaps allowed).
+  - Every :hover sits inside @media (hover: hover); zero mouse* listeners;
+    zero performance.memory; zero inline style= except custom properties.
+  - CSS lengths rem-first; px only on 1px hairlines and the 3px grain
+    pattern.
+  - Importmap resolves scheduler to ../Scheduler.js and arena to @1.9.0.
+  - Gates re-proven green after the diff: npm test 122/0, torture ok.
+  - Runtime proof (orchestrator, in-browser): both demos load with a clean
+    console over HTTP, telemetry moves, and with #profile the
+    layout-profiler reports violationCount 0 across a driven session.
 
 NON-GOALS
 
-  No behavior change, no new API, no version-inflating features. ROADMAP.md
-  and RESEARCH.md stay repo-only (not in files[]). NO VERSION BUMP during
-  the pipeline: the three canonical sites (package.json, the VERSION const,
-  the llms.txt header) stay at 1.1.0 until `/release 1.1.1` performs the
-  sweep -- this keeps the F3 diff logic-free and the machine's auto-publish
-  routine dormant. "New in 1.1.1" style content references to the target
-  version are fine in CHANGELOG head drafting; version SITES are not.
+  No library, test, or shipped-doc change of any kind. No version bump, no
+  CHANGELOG entry (example/ does not ship), no /release. No committed
+  demo-law guard tests this session -- recorded as a rider for the next
+  release so shipped docs stay byte-stable at 1.1.1. The two Writes that
+  land the rewritten demos must each leave a complete, working file (the
+  machine's auto-commit routine may snapshot the tree between tool calls).
 
 DONE WHEN
-  one README tells the two-member story on the blueprint spine; every
-  number is stamped; every example runs; drift is CI-caught.
+  both example files obey the demo-audit law end to end, prove it in a
+  browser (clean console, #profile clean), the repo diff is demos-only,
+  and the 1.1.1 gates are re-proven untouched.
