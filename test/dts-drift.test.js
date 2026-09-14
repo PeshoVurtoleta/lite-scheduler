@@ -20,6 +20,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { FastBitScheduler, EMPTY } from '../Scheduler.js';
 
 const ROOT = new URL('../', import.meta.url);
 const JS = readFileSync(new URL('Scheduler.js', ROOT), 'utf8');
@@ -77,6 +78,18 @@ function setDiff(a, b, labelA, labelB) {
 const SURFACE = [
     'Priority', 'CapacityError', 'createScheduler', 'setDefaultScheduler',
     'schedule', 'shouldYield', 'isBusy', 'yieldTask', 'stats', 'VERSION',
+    // second member (v1.1.0)
+    'EMPTY', 'FastBitScheduler',
+];
+
+// FastBitScheduler's PUBLIC surface (methods + getters) and the internal fields
+// that are deliberately NOT declared in the d.ts. The allowlist is explicit so
+// adding an instance field silently is caught by the reverse check below.
+const FB_METHODS = ['push', 'popMin', 'peekMin', 'peekPriority', 'isEmpty', 'sizeOf', 'clear'];
+const FB_GETTERS = ['size', 'capacity', 'requestedCapacity', 'numTiers'];
+const FB_INTERNAL = [
+    'activeMask', 'buckets', 'heads', 'tails', 'counts',
+    '_cap', '_mask', '_size', '_maxPrio', '_numTiers', '_requestedCapacity',
 ];
 
 // --- the inventories --------------------------------------------------------
@@ -124,4 +137,48 @@ test('control: dropping a runtime export from the d.ts fails surface parity', ()
     const mutated = DTS.replace(/export function yieldTask\([^;]*;/, '');
     const diffs = setDiff(runtimeExports(JS), runtimeExports(mutated), 'Scheduler.js', 'Scheduler.d.ts');
     assert.ok(diffs.length > 0, 'dropping yieldTask from the d.ts did not fail surface parity');
+});
+
+// --- member parity: FastBitScheduler prototype/instance vs the d.ts ----------
+
+test('(c) FastBitScheduler: every public method + getter is declared, and every instance field is on the allowlist', () => {
+    const proto = FastBitScheduler.prototype;
+    // Forward: every public method exists at runtime AND is declared in the d.ts.
+    for (const m of FB_METHODS) {
+        assert.equal(typeof proto[m], 'function', 'FastBitScheduler.prototype.' + m + ' missing at runtime');
+        assert.ok(new RegExp('\\b' + m + '\\s*\\(').test(DTS), 'Scheduler.d.ts does not declare method ' + m);
+    }
+    // Forward: every getter exists on the prototype AND is declared `readonly` in the d.ts.
+    for (const g of FB_GETTERS) {
+        const d = Object.getOwnPropertyDescriptor(proto, g);
+        assert.ok(d && typeof d.get === 'function', 'FastBitScheduler getter ' + g + ' missing at runtime');
+        assert.ok(new RegExp('readonly\\s+' + g + '\\s*:').test(DTS), 'Scheduler.d.ts does not declare readonly ' + g);
+    }
+    // Reverse: every instance OWN field must be on the internal allowlist (so a
+    // silently-added field is caught) and must NOT be declared in the d.ts.
+    const inst = new FastBitScheduler(16, 32);
+    for (const key of Object.keys(inst)) {
+        assert.ok(FB_INTERNAL.includes(key),
+            'FastBitScheduler instance field "' + key + '" is not on the internal allowlist -- declare it or add it to FB_INTERNAL');
+        assert.ok(!new RegExp('\\b' + key + '\\b\\s*:').test(DTS),
+            'internal field "' + key + '" leaked into the d.ts surface');
+    }
+});
+
+test('(d) EMPTY: -1 at runtime and typed as the literal -1 in the d.ts', () => {
+    assert.equal(EMPTY, -1);
+    assert.ok(/export const EMPTY\s*:\s*-1\b/.test(DTS), 'd.ts must type EMPTY as the literal -1, not number');
+});
+
+test('control: a member method absent from the d.ts is caught', () => {
+    const mutated = DTS.replace(/peekPriority\([^)]*\)\s*:\s*number;/, '');
+    assert.ok(!/\bpeekPriority\s*\(/.test(mutated), 'mutation did not remove peekPriority from the d.ts copy');
+});
+
+test('control: a silently-added instance field is caught by the allowlist', () => {
+    const inst = new FastBitScheduler(16, 32);
+    inst._sneaky = 1; // simulate a field added without updating the allowlist
+    let caught = false;
+    for (const key of Object.keys(inst)) if (!FB_INTERNAL.includes(key)) caught = true;
+    assert.ok(caught, 'a field outside the allowlist was not detected');
 });

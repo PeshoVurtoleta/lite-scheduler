@@ -166,3 +166,64 @@ export function stats(): SchedulerStats;
 
 /** Package version. In sync with package.json and llms.txt. */
 export const VERSION: string;
+
+// ============================================================
+// Second member: FastBitScheduler (v1.1.0). Independent of the frame scheduler
+// above; neither references the other (decisions/0002).
+// ============================================================
+
+/** Out-of-band return from popMin/peekMin. Stored handles are always >= 0. */
+export const EMPTY: -1;
+
+/**
+ * A 32-tier bucket priority queue over non-negative Int32 HANDLES, with an O(1)
+ * bitmask routing table and one true ring buffer per tier. "Pop the highest
+ * priority" is a lowest-set-bit on a single 32-bit int -- two instructions, no
+ * scan, however many tiers are live. Bit 0 = priority 0 = highest.
+ *
+ * Contract: handles are non-negative Int32 (0..2147483647); EMPTY (-1) is the
+ * one out-of-band value and it is exported; a full tier throws; capacity rounds
+ * up to a power of two and the round-up is observable (capacity vs
+ * requestedCapacity); no callbacks -- the drain loop is the API (decisions/0005).
+ *
+ * The internal fields (activeMask, buckets, heads, tails, counts, _cap, _mask,
+ * _size, _maxPrio, _numTiers, _requestedCapacity) are intentionally NOT declared:
+ * the torture lanes reach them, the type surface does not. The drift test carries
+ * an explicit internal-field allowlist so adding a field silently is still caught.
+ */
+export class FastBitScheduler {
+    /**
+     * @param capacityPerTier ring slots per tier; rounded up to a power of two.
+     *   Integer 1..16777216 (2**24). Throws (naming the ceiling) otherwise;
+     *   nothing clamps. Default 1024.
+     * @param numTiers number of priority tiers; integer 2..32. Throws otherwise.
+     *   Default 32.
+     */
+    constructor(capacityPerTier?: number, numTiers?: number);
+    /** O(1). Enqueue a handle at a priority. Throws (RangeError, `lite-scheduler:`)
+     *  on a non-integer/negative handle, a priority outside 0..numTiers-1, or a
+     *  full tier. */
+    push(item: number, priority: number): void;
+    /** O(1). Remove and return the handle from the highest-priority non-empty
+     *  tier, or EMPTY (-1) when empty. */
+    popMin(): number;
+    /** O(1). The handle popMin would return, without removing it; EMPTY when empty. */
+    peekMin(): number;
+    /** O(1). The tier popMin would drain from, or -1 when empty. */
+    peekPriority(): number;
+    /** O(1). True exactly when no tier holds an item. */
+    isEmpty(): boolean;
+    /** O(1). Live item count in one tier. Throws on a bad priority; never returns
+     *  undefined. */
+    sizeOf(priority: number): number;
+    /** O(numTiers), cold. Empty every tier without reallocating any ring. */
+    clear(): void;
+    /** O(1) maintained total item count across all tiers. */
+    readonly size: number;
+    /** Allocated ring capacity per tier (the power-of-two round-up result). */
+    readonly capacity: number;
+    /** Capacity the caller requested, pre round-up (so the round-up is observable). */
+    readonly requestedCapacity: number;
+    /** Number of priority tiers this instance was built with. */
+    readonly numTiers: number;
+}

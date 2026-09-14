@@ -114,3 +114,40 @@ export function predictOrder(items) {
     for (let i = 0; i < out.length; i++) ids[i] = out[i].id;
     return ids;
 }
+
+/**
+ * The conservation invariant for FastBitScheduler (t0/t1/t2/t5/t6/t7/t9):
+ *   q.size === sum(q.sizeOf(p) for p in 0..numTiers-1)  AND
+ *   for every p: (activeMask & (1<<p)) !== 0  <=>  q.sizeOf(p) > 0  AND
+ *   q.isEmpty() === (q.size === 0)
+ * Returns a boolean; allocates nothing on the passing path (no string built).
+ */
+export function fbConserved(q) {
+    let sum = 0;
+    const nt = q.numTiers;
+    for (let p = 0; p < nt; p++) {
+        const c = q.sizeOf(p);
+        sum += c;
+        const bit = (q.activeMask & (1 << p)) !== 0;
+        if (bit !== (c > 0)) return false;
+    }
+    if (sum !== q.size) return false;
+    if (q.isEmpty() !== (q.size === 0)) return false;
+    return true;
+}
+
+/** Failure string for fbConserved -- built ONLY when called (on failure). */
+export function fbConservationReport(q) {
+    let sum = 0;
+    const bad = [];
+    const nt = q.numTiers;
+    for (let p = 0; p < nt; p++) {
+        const c = q.sizeOf(p);
+        sum += c;
+        const bit = (q.activeMask & (1 << p)) !== 0;
+        if (bit !== (c > 0)) bad.push('tier ' + p + ' maskBit=' + bit + ' sizeOf=' + c);
+    }
+    return 'fbConserved failed: size=' + q.size + ' sumSizeOf=' + sum +
+        ' activeMask=' + q.activeMask + ' isEmpty=' + q.isEmpty() +
+        (bad.length ? ' [' + bad.join('; ') + ']' : '');
+}

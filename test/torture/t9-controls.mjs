@@ -14,12 +14,53 @@
  */
 
 import { createLeakTracker } from '@zakkster/lite-leak';
-import { createScheduler, Priority } from '../../Scheduler.js';
+import { createScheduler, Priority, FastBitScheduler } from '../../Scheduler.js';
 import { check, die, drain, settleGc } from './harness.mjs';
-import { runRound, firstMismatch } from './t5-fuzz.mjs';
+import { runRound, firstMismatch, runFastBitRound } from './t5-fuzz.mjs';
+import { checkItemDoor } from './t1-degenerate.mjs';
 import { soak } from './t7-soak.mjs';
 
 const leak = [];
+
+/** A FastBitScheduler whose push BYPASSES the item door (writes through the
+ *  parent's fields). Used only by C4 to prove t1's checkItemDoor has teeth. */
+class UndooredPush extends FastBitScheduler {
+    push(item, priority) {
+        if ((priority | 0) !== priority || priority < 0 || priority > this._maxPrio) throw new RangeError('prio');
+        if (this.counts[priority] === this._cap) throw new RangeError('full');
+        const t = this.tails[priority];
+        this.buckets[priority][t] = item;            // NO item validation
+        this.tails[priority] = (t + 1) & this._mask;
+        this.counts[priority]++; this._size++;
+        this.activeMask |= (1 << priority);
+    }
+}
+
+/** A FastBitScheduler whose push periodically REALLOCATES a tier's ring (same
+ *  byteLength, new object identity). Used only by C6 to prove the structural
+ *  check rejects on identity, not just on bytes. */
+class ReallocRing extends FastBitScheduler {
+    constructor(cap, nt) { super(cap, nt); this._n = 0; }
+    push(item, priority) {
+        super.push(item, priority);
+        if ((++this._n % 100) === 0) {
+            const old = this.buckets[priority];
+            const fresh = new Int32Array(old.length); // identical byteLength
+            fresh.set(old);
+            this.buckets[priority] = fresh;           // identity changes
+        }
+    }
+}
+
+/** True iff every tier's ring keeps its object identity across a churn (the t6
+ *  sub-gate B structural check, extracted so a control can prove its teeth). */
+function ringIdentityHeld(q, pushes) {
+    const before = new Array(q.numTiers);
+    for (let p = 0; p < q.numTiers; p++) before[p] = q.buckets[p];
+    for (let i = 0; i < pushes; i++) { q.push(i % 1000, 0); q.popMin(); }
+    for (let p = 0; p < q.numTiers; p++) if (q.buckets[p] !== before[p]) return false;
+    return true;
+}
 
 /** Run N schedule->flush cycles, optionally retaining an allocation each cycle,
  *  and return the gc-settled heapUsed growth in bytes. Mirrors t6 sub-gate B. */
@@ -97,5 +138,51 @@ export async function run() {
         check(tracker.size() > 0,
             () => 't9 C3: a soak that skips destroy() still cleared the tracker (t7 is toothless)');
         for (let i = 0; i < kept.length; i++) kept[i].destroy(); // cleanup: plug the channels
+    }
+
+    // --- C4: item door removed -> t1's checkItemDoor must reject --------------
+    {
+        // Non-vacuity: the real class's door bites (checkItemDoor returns null).
+        const clean = checkItemDoor(new FastBitScheduler(16, 32));
+        if (clean !== null) die('t9 C4: checkItemDoor rejected a CORRECT FastBitScheduler (vacuous): ' + clean);
+        // Teeth: an undoored push must be caught.
+        const bad = checkItemDoor(new UndooredPush(16, 32));
+        if (bad === null) die('t9 C4: an undoored push survived the t1 item-door check (t1 is toothless)');
+    }
+
+    // --- C5: corrupted oracle -> the fb fuzz comparison must diverge ----------
+    {
+        const round = runFastBitRound(0xC5C5C5, { ops: 20000, numTiers: 32, cap: 1024 });
+        // Non-vacuity: the correct oracle agrees with the subject.
+        if (round.mismatch !== null || !round.conserved) {
+            die('t9 C5: the CORRECT fb fuzz diverged (vacuous) -- ' +
+                JSON.stringify(round.mismatch || round.conservationFail));
+        }
+        if (firstMismatch(round.results, round.oracleResults) !== -1) {
+            die('t9 C5: correct oracle stream diverged from subject stream (vacuous)');
+        }
+        // Teeth: corrupt the oracle stream (swap two non-equal adjacent values, or
+        // drop one) -- the comparison must now diverge.
+        const corrupt = round.oracleResults.slice();
+        let swapped = false;
+        for (let i = 0; i + 1 < corrupt.length; i++) {
+            if (corrupt[i] !== corrupt[i + 1]) { const t = corrupt[i]; corrupt[i] = corrupt[i + 1]; corrupt[i + 1] = t; swapped = true; break; }
+        }
+        if (!swapped && corrupt.length > 0) corrupt.splice(corrupt.length >> 1, 1);
+        if (firstMismatch(round.results, corrupt) === -1) {
+            die('t9 C5: a corrupted oracle did NOT diverge (the fb fuzz comparison is toothless)');
+        }
+    }
+
+    // --- C6: a reallocating ring -> the structural identity check must reject --
+    {
+        // Non-vacuity: a correct ring keeps every bucket's identity.
+        if (ringIdentityHeld(new FastBitScheduler(1024, 32), 500) !== true) {
+            die('t9 C6: a correct FastBitScheduler failed the ring-identity check (vacuous)');
+        }
+        // Teeth: a reallocating ring (same byteLength, new identity) must be rejected.
+        if (ringIdentityHeld(new ReallocRing(1024, 32), 500) !== false) {
+            die('t9 C6: a reallocating ring passed the structural check (t6 B only sees bytes)');
+        }
     }
 }

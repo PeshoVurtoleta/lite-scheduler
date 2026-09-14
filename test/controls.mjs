@@ -21,7 +21,12 @@
  * A suite that always fails is as useless as one that never does; both arms are
  * required. The in-process controls (t9) run every invocation, so a plain
  * `npm run torture` already proves those gates bite; this driver adds the
- * out-of-process proofs.
+ * out-of-process proofs. As of F2 (v1.1.0) t9 also carries the FastBitScheduler
+ * controls -- C4 (an undoored push must be rejected by t1's item-door check),
+ * C5 (a corrupted oracle must diverge from the fb differential fuzz), and C6 (a
+ * reallocating ring must be rejected by t6 sub-gate B on object identity, not
+ * just byteLength) -- each with its non-vacuity arm; they run in-process on every
+ * torture invocation and need no new out-of-process driver here.
  *
  *     node test/controls.mjs        -> prints exactly "ok", exit 0
  *     npm run torture:controls

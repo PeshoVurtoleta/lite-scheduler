@@ -309,6 +309,39 @@ schedule(fn, Priority.UserInput);  // uses a lazy-init default scheduler
 
 ---
 
+## FastBitScheduler -- the second member (new in 1.1.0)
+
+`FastBitScheduler` is a 32-tier bucket priority queue over non-negative Int32 **handles** (indices into your own arrays), with an O(1) routing mask: "pop the highest priority" is a lowest-set-bit on a single 32-bit int -- two instructions, no scan, however many tiers are live. It is independent of the frame scheduler above; the two never reference each other, and importing only one tree-shakes the other away.
+
+```js
+import { FastBitScheduler, EMPTY } from '@zakkster/lite-scheduler';
+
+const q = new FastBitScheduler(1024, 32);  // 1024 slots/tier, 32 tiers
+q.push(101, 2);   // handle 101 at priority 2
+q.push(102, 0);   // handle 102 at priority 0 (highest)
+q.push(103, 2);
+
+// The canonical drain -- why EMPTY is exported:
+let h;
+while ((h = q.popMin()) !== EMPTY) {
+    console.log(h);   // 102, then 101, then 103 (min-tier, FIFO within a tier)
+}
+```
+
+| method | complexity | throws when |
+|---|---|---|
+| `push(handle, priority)` | O(1) | handle is not a non-negative Int32; priority not in 0..numTiers-1; tier full |
+| `popMin()` / `peekMin()` | O(1) | never (returns `EMPTY` = -1 when empty) |
+| `peekPriority()` | O(1) | never (returns -1 when empty) |
+| `sizeOf(priority)` | O(1) | priority not in 0..numTiers-1 |
+| `isEmpty()` | O(1) | never |
+| `clear()` | O(numTiers), cold | never (no reallocation) |
+| `size` / `capacity` / `requestedCapacity` / `numTiers` | O(1) getters | never |
+
+Handles are stored in `Int32Array`, so `EMPTY` (-1) is the one out-of-band value and `push` refuses any `-1`, negative, or non-integer -- which is what makes the drain loop above sound. Capacity rounds up to a power of two and the round-up is observable (`capacity` vs `requestedCapacity`). Full contract and the per-tier memory table: [llms.txt](llms.txt). Design records: decisions/0002-0005.
+
+---
+
 ## Benchmarks
 
 ### Headline result
@@ -364,7 +397,7 @@ Three levels of verification, depending on how deep you want to go.
 npm test
 ```
 
-Runs **36 deterministic assertions** under `node:test`, covering:
+Runs **57 deterministic assertions** under `node:test`, covering:
 
 | Group | What's tested |
 |---|---|
@@ -381,7 +414,7 @@ Runs **36 deterministic assertions** under `node:test`, covering:
 | Frame budget | tight `budgetMs` still completes all tasks across many flushes |
 | Ring buffer growth | wraparound correctness after `grow` |
 
-A clean run ends with `36 passed, 0 failed`. Suitable for CI.
+A clean run ends with `57 passed, 0 failed`. Suitable for CI.
 
 ### 2. Benchmark -- "does it perform as claimed?"
 
@@ -407,7 +440,7 @@ A side-by-side demo: one panel runs lite-scheduler, the other runs `setTimeout(0
 
 | Command | What it does |
 |---|---|
-| `npm test` | Run the 36-test unit suite |
+| `npm test` | Run the 57-test unit suite |
 | `npm run test:watch` | Re-run on save |
 | `npm run bench` | Run the Node benchmark, write `bench/bench-results.json` |
 | `npm run verify` | `npm test && npm run bench` -- the full CI-style check |

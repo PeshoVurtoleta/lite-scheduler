@@ -4,6 +4,79 @@ All notable changes to `@zakkster/lite-scheduler` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-14
+
+The package gains a second, independent member. The frame scheduler is
+byte-identical: `createScheduler`, `schedule`, and `performWork` are unchanged
+(empty hunks in the 1.1.0 diff); every change is additive plus the `VERSION` line.
+
+### Added
+
+- `FastBitScheduler`: a 32-tier bucket priority queue with an O(1) bitmask routing
+  table and one true ring buffer per tier, exported named from Scheduler.js. The
+  package's second member; it and the frame scheduler never reference each other
+  (decisions/0002).
+- `EMPTY` (-1): the one out-of-band return from popMin/peekMin, now exported, so
+  the canonical drain loop is writable by consumers.
+- Doors (all fail closed, all at the door, all naming the library):
+  - push: the item door -- (item | 0) === item && item >= 0. -1, {}, NaN, 1.5,
+    2**31, '7' all throw; nothing coerces. (D-01, D-02)
+  - constructor: capacityPerTier must be an integer 1..2**24; numTiers an integer
+    2..32 (default 32). Nothing silently clamps. (D-03, decision 0004)
+  - sizeOf: the priority door; it can never return undefined. (D-04)
+- Surface: `size` (O(1) maintained), `clear()` (O(numTiers), cold, no realloc),
+  `peekPriority()`, `capacity`, `requestedCapacity`, `numTiers`. (D-06)
+- Torture lanes for the new member: t0 laws, t1 doors, t2 adversarial, t5 1M-op
+  differential fuzz with the conservation invariant checked after every op, t6
+  sync alloc lane, t7 4096-cycle soak, t9 controls C4/C5/C6.
+- Perf-gate: a second zgcSuite covering push/popMin steady churn and the
+  door-cost path, with summed-backing-store byteLength and size counters gated at
+  delta 0.
+- decisions/0002-dual-family, 0003-storage, 0004-tiers, 0005-no-callbacks.
+
+### Changed
+
+- VERSION -> 1.1.0.
+- Error message prefix on the new member normalized to `lite-scheduler:` (the
+  draft used `[scheduler]`; the draft was never published).
+- llms.txt: the stale "36 node:test assertions" line corrected to 57 (frame
+  scheduler; the reproducible `node --test` leaf count) plus the new 37-case
+  FastBitScheduler suite. README's two "36" mentions corrected to match.
+
+### Measured
+
+Measured on node v26.3.1, darwin arm64, 2026-09-14 (gc-profiler 1.16.0, perf-gate
+1.4.2), with the corrected bounded workload (residents in tiers 19 and 31 plus
+single-occupancy churn tiers, so no tier approaches capacity).
+
+- Door cost (measureOps, ops 200000, warmup 20000, stabilize deep, best-of-6):
+  before (undoored draft) opsPerSec = 64921891; after (shipped) opsPerSec =
+  59859325; ratio 0.922 (floor 0.90). majorsPerKOp 0 and maxPauseMsPerOp 0.000 on
+  both arms. (The ratio is a conservative floor: the draft arm is both undoored
+  and a small standalone module while the shipped arm is both doored and the large
+  module, so both differences push the ratio the same way.)
+- Storage layout (decision 0003): measured against a standalone layout-A twin to
+  remove the module-shape confound. A (32 rings) best 58258083 ops/s vs B (one
+  flat array) best 62460962 ops/s; adopted A. B's ~7% best-of edge sits inside
+  A's own ~15% run-to-run variance, so it is not the clear outside-noise win the
+  adoption rule requires against the default; the 1M fuzz on B was therefore moot
+  and not run.
+- Floor bench (bench/fastbit-floor.mjs), popMin vs a naive 32-tier linear scan
+  and a binary heap of (priority, seq) pairs, 512 items/tier, pops/sec (M/s):
+
+  | populated tiers | FastBit popMin | naive scan | binary heap |
+  |---:|---:|---:|---:|
+  | 1  | 33.4 | 28.3 | 19.5 |
+  | 8  | 127.6 | 78.4 | 27.5 |
+  | 32 | 122.4 | 145.4 | 21.1 |
+
+  FastBit beats the (priority, seq) heap ~5.8x at every tier count, and beats the
+  naive scan 1.2-1.6x when the populated tiers are high (the scan pays for the
+  distance to the lowest set bit). Honest crossover: at 32 populated tiers, tier 0
+  is always live, so the scan short-circuits immediately and edges the mask
+  (0.84x) -- the mask's guarantee is distribution-independent O(1), which matters
+  when the lowest populated tier is high or unpredictable.
+
 ## [1.0.3] - 2026-09-14
 
 The documented priority contract becomes TRUE for every input, and misuse now
@@ -149,6 +222,7 @@ Fixed; S-03, S-04, and unknown-key rejection under Changed.
 - Capacity policies `throw` / `grow` / `drop`, capped at `maxTasks * 16`.
 - Module-default convenience exports and `setDefaultScheduler()`.
 
+[1.1.0]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.1.0
 [1.0.3]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.3
 [1.0.2]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.2
 [1.0.1]: https://github.com/PeshoVurtoleta/lite-scheduler/releases/tag/v1.0.1

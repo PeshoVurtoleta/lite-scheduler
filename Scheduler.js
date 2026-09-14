@@ -450,7 +450,7 @@ export function createScheduler(config = {}) {
 // -------------------------------------------------------------------
 
 /** Package version. Kept in sync with package.json and llms.txt. */
-export const VERSION = "1.0.3";
+export const VERSION = "1.1.0";
 
 let _defaultScheduler = null;
 
@@ -489,4 +489,208 @@ export function yieldTask(priority) {
 /** Convenience: stats from the default scheduler. */
 export function stats() {
     return getDefault().stats();
+}
+
+// ===================================================================
+// SECOND MEMBER: FastBitScheduler (v1.1.0)
+//
+// A 32-tier bucket priority queue with an O(1) bitmask routing table and one
+// TRUE ring buffer per tier. Independent of the frame scheduler above: it never
+// imports, references, or shares state with createScheduler, and the frame
+// scheduler never learns the mask exists (decisions/0002).
+//
+// The design rests on one trick: instead of SCANNING numTiers to find the
+// highest-priority non-empty one, keep a single 32-bit int `activeMask` whose
+// bit p is 1 exactly when tier p holds >= 1 item. "Highest priority" is then
+// "lowest set bit" -- two instructions (`x & -x`, then `Math.clz32`), no loop,
+// however many tiers are populated. Bit 0 = P0 = highest priority.
+//
+// Layout (Structure-of-Arrays; zero allocation after construction):
+//   activeMask : Int32       -- routing table; bit p set <=> tier p non-empty
+//   buckets[p] : Int32Array  -- ring storage for tier p (HANDLES, not objects)
+//   heads[p]   : Uint32      -- read cursor  (next slot to pop)
+//   tails[p]   : Uint32      -- write cursor (next slot to push)
+//   counts[p]  : Uint32      -- live items in tier p (the ring's fill level)
+//
+// Storage is Int32Array, never Float32Array: a 32-bit float cannot represent
+// integers above 2^24 exactly, so a Float32 store would silently corrupt any
+// handle above 2^24 (it would round to a neighbor and alias a different SoA
+// row). Int32Array round-trips every non-negative Int32 handle bit-exact.
+//
+// Contract (fail closed -- every caller bug throws at the door):
+//   - priority MUST be an integer 0..numTiers-1 (0 = highest). JS shift is mod
+//     32, so an unchecked priority 32 would silently alias tier 0 -- refused.
+//   - items MUST be non-negative Int32 HANDLES (indices into some external SoA),
+//     because Int32Array stores 32-bit ints and popMin() reserves EMPTY (-1) for
+//     "empty": an object would coerce to 0, and a stored -1 would collide with
+//     EMPTY and strand the canonical drain loop. The item door refuses both.
+//   - a tier at capacity throws rather than silently dropping the write.
+//   - capacity rounds up to a power of two and the round-up is OBSERVABLE via
+//     `capacity` (allocated) vs `requestedCapacity` (asked for).
+//
+// Why counts[] exists: in a real ring `head` can pass `tail` around the circle,
+// so `head === tail` is ambiguous -- it means BOTH full and empty. The count
+// column disambiguates, doubles as the full-check, and triggers the routing-bit
+// clear. It is the one field that turns a linear-arena-with-reset into a ring.
+//
+// Review note: the `31 - Math.clz32(x & -x)` line in popMin/peekMin/peekPriority
+// is sign-agnostic (it operates on the isolated lowest bit) and stays
+// BYTE-IDENTICAL to the fuzz-proven draft -- do not "fix" it for the tier-31
+// sign bit.
+// ===================================================================
+
+/** Out-of-band return from popMin/peekMin (stored handles are always >= 0). */
+export const EMPTY = -1;
+
+/** Round n up to the next power of two, so ring indices wrap with `& (cap-1)`
+ *  instead of the slower `% cap`. The constructor's capacity door guarantees an
+ *  integer >= 1 before this is called, so no `n | 0` truncation is needed. */
+function ceilPow2(n) {
+    if (n < 2) return 2;
+    n--; n |= n >> 1; n |= n >> 2; n |= n >> 4; n |= n >> 8; n |= n >> 16;
+    return (n + 1) >>> 0;
+}
+
+const FASTBIT_MAX_CAP = 16777216; // 2**24 -- the documented capacity ceiling
+
+export class FastBitScheduler {
+    /**
+     * @param {number} [capacityPerTier=1024] ring slots per tier; rounded up to a
+     *   power of two. Must be an integer 1..16777216 (2**24). Nothing clamps.
+     * @param {number} [numTiers=32] number of priority tiers; integer 2..32.
+     */
+    constructor(capacityPerTier = 1024, numTiers = 32) {
+        // --- cold doors: fail closed, nothing silently clamps ----------------
+        if ((numTiers | 0) !== numTiers || numTiers < 2 || numTiers > 32) {
+            throw new RangeError(
+                "lite-scheduler: numTiers must be an integer 2..32, got " + numTiers
+            );
+        }
+        if ((capacityPerTier | 0) !== capacityPerTier ||
+            capacityPerTier < 1 || capacityPerTier > FASTBIT_MAX_CAP) {
+            throw new RangeError(
+                "lite-scheduler: capacityPerTier must be an integer 1..16777216 (2**24), got " +
+                capacityPerTier
+            );
+        }
+
+        const cap = ceilPow2(capacityPerTier);
+        this._requestedCapacity = capacityPerTier; // what the caller asked for
+        this._cap  = cap;          // ring capacity per tier (power of two)
+        this._mask = cap - 1;      // wrap mask: (i + 1) & _mask -- no branch, no %
+        this._numTiers = numTiers;
+        this._maxPrio  = numTiers - 1; // hoisted priority-door bound (was literal 31)
+        this._size = 0;            // O(1) maintained item count
+
+        // A single 32-bit int is the O(1) routing table. Bit p set == tier p live.
+        this.activeMask = 0;
+
+        // numTiers parallel rings (SoA). No Map, no resize, no per-op allocation.
+        this.buckets = Array.from({ length: numTiers }, () => new Int32Array(cap));
+
+        // Per-tier ring cursors + fill level.
+        this.heads  = new Uint32Array(numTiers);
+        this.tails  = new Uint32Array(numTiers);
+        this.counts = new Uint32Array(numTiers);
+    }
+
+    /** O(1) push. Throws on a bad priority, a bad item, or a full tier (fail closed). */
+    push(item, priority) {
+        if ((priority | 0) !== priority || priority < 0 || priority > this._maxPrio) {
+            throw new RangeError(
+                "lite-scheduler: priority must be an integer 0.." + this._maxPrio + ", got " + priority
+            );
+        }
+        // Item door: two integer compares. A non-integer or negative handle would
+        // coerce into the Int32Array (an object -> 0, NaN -> 0, 1.5 -> 1, 2**31 ->
+        // negative, '7' -> 7) or collide with EMPTY (-1). Refuse it here.
+        if ((item | 0) !== item || item < 0) {
+            throw new RangeError(
+                "lite-scheduler: item must be a non-negative Int32 handle (0..2147483647), got " + item
+            );
+        }
+        if (this.counts[priority] === this._cap) {
+            throw new RangeError(
+                "lite-scheduler: tier " + priority + " is full (" + this._cap + ")"
+            );
+        }
+
+        const t = this.tails[priority];
+        this.buckets[priority][t] = item;            // write at the tail cursor
+        this.tails[priority] = (t + 1) & this._mask; // TRUE ring wrap
+        this.counts[priority]++;
+        this._size++;
+
+        this.activeMask |= (1 << priority);          // this tier now has data
+    }
+
+    /** O(1) true pop-min: the item from the highest-priority non-empty tier.
+     *  Returns EMPTY (-1) when every tier is empty. */
+    popMin() {
+        if (this.activeMask === 0) return EMPTY;
+
+        // Isolate the lowest set bit (two's complement), then turn it into its
+        // index -- the highest priority present -- with no scan.
+        const lowestBit = this.activeMask & -this.activeMask;
+        const p = 31 - Math.clz32(lowestBit);
+
+        const h = this.heads[p];
+        const item = this.buckets[p][h];             // read at the head cursor
+        this._size--;                                // O(1) size counter (decision 0003)
+        this.heads[p] = (h + 1) & this._mask;        // ring wrap -- no reset needed
+
+        // Last item in this tier? Clear its routing bit so popMin skips it. The
+        // cursors are left where they are; count keeps them honest, so slots are
+        // reused in place with zero GC.
+        if (--this.counts[p] === 0) {
+            this.activeMask &= ~lowestBit;
+        }
+
+        return item;
+    }
+
+    /** Read the next item without removing it. EMPTY if the scheduler is empty. */
+    peekMin() {
+        if (this.activeMask === 0) return EMPTY;
+        const p = 31 - Math.clz32(this.activeMask & -this.activeMask);
+        return this.buckets[p][this.heads[p]];
+    }
+
+    /** Tier the next popMin() would drain from, or -1 when empty. O(1), cold-ish. */
+    peekPriority() {
+        if (this.activeMask === 0) return -1;
+        return 31 - Math.clz32(this.activeMask & -this.activeMask);
+    }
+
+    isEmpty() { return this.activeMask === 0; }
+
+    /** Live item count in one tier. Throws on a bad priority (never undefined). */
+    sizeOf(priority) {
+        if ((priority | 0) !== priority || priority < 0 || priority > this._maxPrio) {
+            throw new RangeError(
+                "lite-scheduler: priority must be an integer 0.." + this._maxPrio + ", got " + priority
+            );
+        }
+        return this.counts[priority];
+    }
+
+    /** Empty every tier without reallocating. O(numTiers); documented cold. */
+    clear() {
+        for (let p = 0; p < this._numTiers; p++) {
+            this.heads[p] = 0;
+            this.tails[p] = 0;
+            this.counts[p] = 0;
+        }
+        this.activeMask = 0;
+        this._size = 0;
+    }
+
+    /** O(1) maintained total item count across all tiers. */
+    get size() { return this._size; }
+    /** Allocated ring capacity per tier (power of two; the round-up result). */
+    get capacity() { return this._cap; }
+    /** Capacity the caller requested (pre round-up), so the round-up is observable. */
+    get requestedCapacity() { return this._requestedCapacity; }
+    /** Number of priority tiers this instance was built with. */
+    get numTiers() { return this._numTiers; }
 }

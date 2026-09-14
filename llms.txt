@@ -1,4 +1,4 @@
-# @zakkster/lite-scheduler v1.0.3
+# @zakkster/lite-scheduler v1.1.0
 
 > Zero-GC frame-budget scheduler with 5 strict priority lanes in ~330 lines.
 > MessageChannel-driven; pre-allocated task pool; immediate ring buffer.
@@ -47,7 +47,7 @@ import { schedule, shouldYield, yieldTask, setDefaultScheduler } from '@zakkster
 schedule(fn, Priority.UserInput);
 
 // Package version:
-import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.3"
+import { VERSION } from '@zakkster/lite-scheduler'; // "1.1.0"
 ```
 
 ## Key invariants
@@ -71,15 +71,86 @@ import { VERSION } from '@zakkster/lite-scheduler'; // "1.0.3"
 - An unknown config key is an error at construction, with the nearest known key
   named; onError must be callable when provided.
 
+## Second member: FastBitScheduler (v1.1.0)
+
+A 32-tier bucket priority queue over non-negative Int32 HANDLES, with an O(1)
+routing mask -- "pop the highest priority" is a lowest-set-bit on a single 32-bit
+int (two instructions: `x & -x`, then `Math.clz32`), no scan, however many tiers
+are live. It is the package's second member; it and the frame scheduler above
+never reference each other (decisions/0002), and a consumer importing only one of
+them tree-shakes the other away (`sideEffects: false`).
+
+### API surface
+
+```ts
+import { FastBitScheduler, EMPTY } from '@zakkster/lite-scheduler';
+
+const q = new FastBitScheduler(
+  1024,   // capacityPerTier: ring slots per tier, integer 1..16777216 (2**24); rounds up to a power of two
+  32      // numTiers: priority tiers, integer 2..32 (default 32)
+);
+
+q.push(handle, priority);   // O(1); handle is a non-negative Int32; priority 0..numTiers-1 (0 highest)
+q.popMin();                 // O(1); highest-priority handle, or EMPTY (-1) when empty
+q.peekMin();                // O(1); next handle without removing it, or EMPTY
+q.peekPriority();           // O(1); tier of the next pop, or -1 when empty
+q.isEmpty();                // O(1)
+q.sizeOf(priority);         // O(1); live items in one tier (throws on a bad priority)
+q.clear();                  // O(numTiers), cold; empties every tier without reallocating
+q.size;                     // O(1) maintained total item count
+q.capacity;                 // allocated ring capacity per tier (the round-up result)
+q.requestedCapacity;        // what the caller asked for (so the round-up is observable)
+q.numTiers;                 // tier count this instance was built with
+
+// The canonical drain loop -- why EMPTY is exported:
+let h; while ((h = q.popMin()) !== EMPTY) { /* use handle h */ }
+```
+
+### The contract
+
+- handles are non-negative Int32 (indices into your own SoA), never objects;
+- EMPTY (-1) is the ONE out-of-band value, and it is exported;
+- the handle law: a stored -1 would collide with EMPTY, so push refuses it (and
+  any non-integer or negative) -- which is what makes
+  `while ((h = q.popMin()) !== EMPTY)` sound;
+- priority is an integer 0..numTiers-1; 0 is highest; JS shift is mod 32, so an
+  unchecked 32 would alias tier 0 -- it throws instead;
+- a full tier throws; nothing is silently dropped;
+- capacity rounds up to a power of two and the round-up is OBSERVABLE
+  (capacity vs requestedCapacity);
+- clear() is O(numTiers) and cold; it never reallocates;
+- storage is Int32Array, never Float32Array: a float cannot represent integers
+  above 2^24 exactly, so a float store would silently corrupt a large handle;
+- no callbacks: the drain loop is the API (decisions/0005);
+- every throw is a RangeError whose message starts `lite-scheduler:`.
+
+### Memory (the D-07 table)
+
+Ring storage is `capacity(rounded) * numTiers * 4` bytes (the cursor columns
+heads/tails/counts add numTiers * 4 * 3 more, e.g. 384 bytes at numTiers 32):
+
+| capacityPerTier | numTiers | bytes (buckets) | note |
+|---:|---:|---:|---|
+| 1024 | 32 | 131072 | the draft's default: 128 KiB |
+| 1024 | 8 | 32768 | 4x smaller for an 8-lane consumer |
+| 1024 | 4 | 16384 | |
+| 256 | 32 | 32768 | |
+| 16777216 | 32 | 2147483648 | the documented ceiling, 2 GiB -- why the capacity door names it |
+
 ## Files
 
 - [README.md](README.md): Full documentation with mermaid diagrams,
   case study, FAQ, edge cases. Start here.
 - [./Scheduler.js](./Scheduler.js): The implementation (~330 lines, MIT, ESM).
-- [./Scheduler.d.ts](./Scheduler.d.ts): TypeScript definitions.
-- [test/Scheduler.test.js](test/Scheduler.test.js): 36 node:test assertions
-  including config validation, priority semantics, capacity policies, the
-  "lost work" regression, and immediate ring buffer wraparound.
+- [./Scheduler.d.ts](./Scheduler.d.ts): TypeScript definitions (both members).
+- [test/Scheduler.test.js](test/Scheduler.test.js): 57 node:test assertions for
+  the frame scheduler -- config validation, priority semantics, capacity
+  policies, the "lost work" regression, and immediate ring buffer wraparound.
+- [test/FastBitScheduler.test.js](test/FastBitScheduler.test.js): 37 node:test
+  cases for the second member -- every door (item, capacity, numTiers, sizeOf),
+  the full surface, the tier-31 sign bit, and the fill/throw/drain regression.
+- decisions/0002-dual-family, 0003-storage, 0004-tiers, 0005-no-callbacks
+  (repo-only): the F2 design records for the second member.
 - [bench/bench.js](bench/bench.js): 6-strategy comparison harness vs
   setTimeout, queueMicrotask, raw MessageChannel, setTimeout+heap PQ, and
   a pared-down React-scheduler clone.
