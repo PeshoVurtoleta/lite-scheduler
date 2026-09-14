@@ -706,6 +706,13 @@ TASKS
     reads -- a stale llms.txt is how a sibling hallucinates a signature).
     dts-drift.test.js already guards it; extend to assert every public
     member of BOTH classes appears.
+  - Doc-count sync (folded in from the 1.1.0 release): the FastBit suite
+    is 44 cases since qa's +7 pins (whole-run: 111). Two shipped sites
+    still say 37 -- llms.txt:149 (the family rewrite must carry 44, not
+    propagate 37) and the CHANGELOG 1.1.0 entry (line 43, "37-case");
+    fix both, record the CHANGELOG correction in 1.1.1's Fixed section.
+    Grep '\b37\b' across shipped docs before closing (the 48.37x bench
+    multiplier is a false positive).
   - Bench: re-run bench.js on current node, stamp every README number with
     version + node + machine + date; the May-2025 numbers either re-measured
     or removed. FastBitScheduler floor numbers from F2 included.
